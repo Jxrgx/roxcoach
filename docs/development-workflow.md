@@ -110,3 +110,7 @@ Después de cada pantalla, revísala en 360, 390, tablet y desktop. Confirma que
   - `actionTimeout` de 15 s y `expect` configurado a 15 s: con workers en paralelo el servidor tarda más en responder.
 - **`browser.newContext()` hereda el `storageState` del `test.use()`:** para iniciar sesión con otro usuario dentro de un describe con sesión, pasa `storageState: { cookies: [], origins: [] }`. Si no, `/login` redirige al área del usuario heredado.
 - **Hidratación y formularios:** escribir en un campo controlado antes de que React hidrate se pierde, y el estado inicial (por ejemplo, fecha = hoy) lo reemplaza. Entra a los formularios con `waitUntil: "networkidle"` y confirma los valores con `toHaveValue` antes de enviar. Por la misma razón, los `<details>` se abren con reintento (ver `openBlock`).
+- **Datos de prueba de la fase 7** (`execution.spec.ts`):
+  - Cada prueba crea su **propio atleta** vinculado al coach compartido. Así no deja sesiones "en curso" en el atleta compartido, cuyo Inicio y Agenda revisan otras pruebas en paralelo (Inicio prioriza una sesión en curso).
+  - Las sesiones se insertan en la BD con un snapshot fijo; borrar la sesión en `afterEach` elimina en cascada asignaciones, registros, series y molestias, y después se borra el usuario.
+  - Además de la UI, prueban los triggers directamente con SQL (comenzar una cancelada, serie fuera del snapshot, serie tras finalizar, retirar a quien comenzó).

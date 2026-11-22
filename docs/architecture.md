@@ -55,7 +55,7 @@ El proxy usa `app_metadata.role` del JWT para redirigir sin consultar la BD. La 
 
 ## Datos
 
-- **Esquema activo** (`prisma/schema.prisma`): perfiles (`profiles`, `coach_profiles`, `athlete_profiles`), relación coach–atleta e invitaciones, ejercicios, plantillas y, desde la fase 6, `scheduled_sessions` y `assignments`. `profiles.id` es el mismo id de `auth.users` (FK con cascada).
+- **Esquema activo** (`prisma/schema.prisma`): perfiles (`profiles`, `coach_profiles`, `athlete_profiles`), relación coach–atleta e invitaciones, ejercicios, plantillas `scheduled_sessions` y `assignments` (fase 6) y los registros realizados `session_logs`, `set_logs` y `discomfort_reports` (fase 7). `profiles.id` es el mismo id de `auth.users` (FK con cascada).
 - **Modelo completo previsto:** está en `docs/data-model-draft.prisma` y se incorporará módulo por módulo.
 - **Conexiones:** Prisma 7 usa el driver adapter `@prisma/adapter-pg`. La app se conecta por el pooler (`DATABASE_URL`) y las migraciones por la conexión directa (`DIRECT_URL`, en `prisma.config.ts`).
 - **Migraciones:**
@@ -185,7 +185,7 @@ Un ejercicio ajeno, inexistente o un id inválido muestra el mismo "no está en 
 
 ## Programación y asignación (fase 6)
 
-Sigue la cadena del dominio: **plantilla → sesión programada → asignación al atleta** (el registro realizado llegará con la ejecución).
+Sigue la cadena del dominio: **plantilla → sesión programada → asignación al atleta** (el registro realizado se describe en la fase 7).
 
 **Modelo** (migraciones `add_scheduled_sessions` y `fix_snapshot_check`):
 - **`scheduled_sessions`:** coach (cascada), plantilla de origen (opcional, `SET NULL` si se borra), título, notas, `scheduled_date` (`DATE`), `start_time` opcional (`"HH:MM"`), estado (`programada` o `cancelada`, con `cancelled_at`) y `snapshot` (JSON).
@@ -208,7 +208,41 @@ Sigue la cadena del dominio: **plantilla → sesión programada → asignación 
 
 **Interfaz:**
 - **Coach:** `/coach/sesiones/nueva` (plantilla, fecha y hora, título y notas, atletas; acción fija "Programar sesión"), `/coach/sesiones/[id]` (vista previa del snapshot, Editar detalles, Cancelar, atletas asignados), Calendario semanal y sesiones de hoy en Inicio. "Programar" es la acción principal del detalle de una plantilla publicada.
-- **Atleta:** sesión de hoy y próximas en Inicio, Agenda semanal (tira de 7 días + lista; una semana vacía muestra un solo estado vacío), Entrenamiento (la de hoy o la siguiente) y `/atleta/sesiones/[id]` con bloques en acordeón (nivel 3) y "Comenzar" como acción principal (llegará con la ejecución).
+- **Atleta:** sesión de hoy y próximas en Inicio, Agenda semanal (tira de 7 días + lista; una semana vacía muestra un solo estado vacío), Entrenamiento (la de hoy o la siguiente) y `/atleta/sesiones/[id]` con bloques en acordeón (nivel 3) y "Comenzar" como acción principal (ver fase 7).
+
+## Ejecución del entrenamiento (fase 7)
+
+Completa la cadena del dominio: **asignación → registro realizado**. Lo planeado (snapshot) y lo realizado viven en tablas distintas; la ejecución **nunca escribe** en `scheduled_sessions`.
+
+**Modelo** (migración `add_session_execution`):
+- **`session_logs`:** uno por asignación (`assignment_id` único). Estado `en_curso` o `completada`, `started_at`, `finished_at`, pausa (`paused_at` de la pausa abierta y `paused_seconds` de las cerradas), RPE general (1–10) y comentario (≤ 1000). Sin registro = "sin iniciar".
+- **`set_logs`:** resultado real de una serie, ubicado por su posición en el snapshot (`block_index`, `exercise_index`, `set_number`; único por registro). Reps, distancia (m), tiempo (s), carga (kg) y RPE opcional; al menos un valor.
+- **`discomfort_reports`:** zona (enum de 11), intensidad (`leve`, `moderada`, `fuerte`), nota (≤ 500) y, si se reportó durante un ejercicio, su posición.
+- **Restricciones:** `completada` ⇔ `finished_at`; una completada no queda en pausa; rangos de valores reales.
+- **Triggers:**
+  - `check_session_log_start`: solo se comienza con una asignación `asignada` de una sesión `programada`.
+  - `check_set_log_position`: las series solo se registran mientras la ejecución está `en_curso` y en una posición que exista en el snapshot.
+  - `check_assignment_withdrawal`: no se retira de la sesión a un atleta que ya la comenzó (se conserva el historial).
+- **Cascadas:** borrar la sesión o la cuenta elimina asignaciones y registros. Cancelar una sesión no borra nada; quien ya la había comenzado puede terminarla.
+- **RLS:** activo y sin políticas en las 3 tablas.
+
+**Reglas** (`lib/execution/progress.ts`, `lib/db/execution.ts`, `app/atleta/sesiones/actions.ts`, `validateSetLog`, `validateSessionFeedback` y `validateDiscomfort`):
+- **Comenzar:** sesiones de hoy o de días anteriores (en `APP_TIME_ZONE`); no futuras ni canceladas. Es idempotente.
+- **Registrar:** el objetivo planeado se lee del snapshot en el servidor (no del cliente); el resultado mide lo mismo que el plan (reps, distancia o tiempo), la carga es obligatoria si el plan la tiene y se captura en la unidad del atleta (se guarda en kg). Volver a registrar una serie la corrige (upsert). En pausa no se registra.
+- **Pausa:** se guarda en el servidor; el tiempo activo = (fin, inicio de la pausa abierta o ahora) − inicio − pausas cerradas (`activeSeconds`).
+- **Finalizar:** permitido con series pendientes (confirmación), que quedan como "No realizada". Cierra la pausa abierta.
+- **Después de finalizar:** las series quedan de solo lectura (trigger); solo se editan RPE general y comentario. Las molestias se pueden reportar durante la sesión o desde el resumen.
+
+**Interfaz:**
+- **Atleta:**
+  - Detalle: "Comenzar" (o "Continuar entrenamiento" / "Ver resumen"); una futura muestra cuándo podrá comenzarla.
+  - `/atleta/sesiones/[id]/ejecutar`: nivel 1 cambia según el momento (registrar la serie con "Completar serie" fijo sobre la navegación, descanso con "Siguiente serie", pausa con "Reanudar sesión" o "Finalizar entrenamiento" al terminar). Nivel 2: bloque, progreso, tiempo activo, Pausar y Finalizar. Nivel 3 (panel inferior): ver ejercicio, indicaciones del bloque y reportar molestia. Las series del ejercicio actual permiten volver a una y corregirla.
+  - `/atleta/sesiones/[id]/resumen`: tiempo activo, series, RPE general y comentario, molestias y planeado vs. realizado.
+  - Inicio, Entrenamiento y Agenda muestran el estado (en curso o completada) y priorizan una sesión que quedó en curso.
+- **Coach:**
+  - `/coach/sesiones/[id]`: estado por atleta, "N de M completaron", alerta de molestias y "Resultados" (quien ya comenzó no se puede quitar).
+  - `/coach/sesiones/[id]/atletas/[athleteId]`: tiempo activo, series, RPE, molestias primero, comentario y planeado vs. realizado (solo lectura, en la unidad del coach).
+- **Componentes:** `SetLogger` (objetivo por tipo, unidad del atleta, corrección y botón fijo), `Timer` (`autoStart`, `showControls`, `onComplete`), `RpePicker`, `DiscomfortDialog`, `ExecutionStatusBadge` y `ExecutionResults`.
 
 ## Estados de pantalla
 

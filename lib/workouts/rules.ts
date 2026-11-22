@@ -94,6 +94,17 @@ export function formatPrescription(p: PrescriptionData, unit: WeightUnit = "kg")
   return parts.join(" · ");
 }
 
+/** Objetivo de UNA serie: "50 m · 152 kg", "12 reps", "1:00". */
+export function formatSetTarget(p: Omit<PrescriptionData, "sets" | "restSeconds">, unit: WeightUnit = "kg"): string {
+  const target =
+    p.targetType === "reps"
+      ? `${p.reps ?? 0} reps`
+      : p.targetType === "distance"
+        ? formatDistance(p.distanceMeters ?? 0)
+        : formatClock(p.durationSeconds ?? 0);
+  return p.loadKg !== null ? `${target} · ${loadForDisplay(p.loadKg, unit).toLocaleString("es-MX")} ${unit}` : target;
+}
+
 /* ---------- Orden ---------- */
 
 /** Mueve un elemento `delta` posiciones (devuelve un arreglo nuevo). */

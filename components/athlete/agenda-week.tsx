@@ -104,6 +104,7 @@ export function AgendaWeek({
                             estimatedMinutes: s.estimatedMinutes,
                             blockCount: s.blockCount,
                             intensity: s.intensity,
+                            execution: s.execution,
                           }}
                         />
                       </li>

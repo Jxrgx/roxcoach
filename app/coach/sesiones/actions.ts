@@ -118,7 +118,9 @@ export async function removeAthleteAction(id: string, athleteId: string): Promis
   const coach = await requireCoach();
   if (!UUID_RE.test(id) || !UUID_RE.test(athleteId)) return { ok: false, message: "La sesión no existe." };
   try {
-    if (!(await removeAthleteFromSession(coach.id, id, athleteId))) return { ok: false, message: "El atleta ya no está en esta sesión." };
+    const result = await removeAthleteFromSession(coach.id, id, athleteId);
+    if (result === "started") return { ok: false, message: "Este atleta ya comenzó la sesión; se conserva para no perder su historial." };
+    if (result === "not-found") return { ok: false, message: "El atleta ya no está en esta sesión." };
   } catch (error) {
     console.error("removeAthleteAction", error);
     return { ok: false, message: GENERIC_ERROR };

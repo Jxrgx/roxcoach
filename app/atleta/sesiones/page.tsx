@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { CalendarCheck } from "lucide-react";
 import { requireAthlete } from "@/lib/auth/session";
-import { listAthleteSessions, listUpcomingAthleteSessions } from "@/lib/db/sessions";
+import { findInProgressAthleteSession, listAthleteSessions, listUpcomingAthleteSessions } from "@/lib/db/sessions";
 import { relativeDayKey, todayKey } from "@/lib/scheduling/dates";
 import { APP_TIME_ZONE } from "@/lib/utils/format";
 import { ScreenStates } from "@/components/shared/screen-states";
@@ -12,12 +12,14 @@ import { AthleteSessionDetail } from "@/components/athlete/athlete-session-detai
 
 export const metadata: Metadata = { title: "Entrenamiento de hoy" };
 
-/** "Entrenamiento": la sesión de hoy; si no hay, la próxima programada. */
+/** "Entrenamiento": la que quedó en curso; si no, la de hoy; si no hay, la próxima programada. */
 export default async function TodaySessionPage() {
   const athlete = await requireAthlete();
   const today = todayKey(APP_TIME_ZONE);
-  const todays = (await listAthleteSessions(athlete.id, today, today)).filter((s) => s.status === "programada");
-  const current = todays[0];
+  const [inProgress, todaysAll] = await Promise.all([findInProgressAthleteSession(athlete.id), listAthleteSessions(athlete.id, today, today)]);
+  const todays = todaysAll.filter((s) => s.status === "programada");
+  // Primero la que está en curso; después la primera de hoy sin completar.
+  const current = inProgress ?? todays.find((s) => s.execution !== "completada") ?? todays[0];
   const next = current ? null : (await listUpcomingAthleteSessions(athlete.id, today, 1))[0];
 
   return (
@@ -34,7 +36,7 @@ export default async function TodaySessionPage() {
       loadingLabel="Cargando sesión…"
     >
       {current ? (
-        <AthleteSessionDetail session={current} unit={athlete.weightUnit} eyebrow="Hoy" />
+        <AthleteSessionDetail session={current} unit={athlete.weightUnit} today={today} eyebrow={current.date === today ? "Hoy" : undefined} />
       ) : (
         <div className="flex flex-col gap-5">
           <h1 className="text-2xl font-bold tracking-tight text-ink">Entrenamiento</h1>

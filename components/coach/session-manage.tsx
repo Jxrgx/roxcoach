@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useTransition, type FormEvent } from "react";
-import { CalendarX2, Pencil, UserMinus, UserPlus } from "lucide-react";
+import { AlertTriangle, CalendarX2, ChevronRight, Pencil, UserMinus, UserPlus } from "lucide-react";
+import type { ExecutionStatus } from "@/lib/execution/progress";
+import { Badge } from "@/components/ui/badge";
+import { ExecutionStatusBadge } from "@/components/workouts/execution-status";
 import { addAthletesAction, cancelSessionAction, removeAthleteAction, updateSessionDetailsAction } from "@/app/coach/sesiones/actions";
 import { hasErrors, validateSessionDetails, type FieldErrors, type SessionDetailsInput } from "@/lib/validations";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -133,7 +136,7 @@ export function SessionAthletes({
   editable,
 }: {
   sessionId: string;
-  assigned: SelectableAthlete[];
+  assigned: (SelectableAthlete & { execution?: ExecutionStatus; discomfortCount?: number })[];
   /** Atletas activos que aún no están en la sesión. */
   assignable: SelectableAthlete[];
   editable: boolean;
@@ -175,9 +178,16 @@ export function SessionAthletes({
   return (
     <section aria-labelledby="asignados" className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="asignados" className="text-base font-semibold text-ink">
-          Atletas asignados <span className="font-normal text-muted">({assigned.length})</span>
-        </h2>
+        <div>
+          <h2 id="asignados" className="text-base font-semibold text-ink">
+            Atletas asignados <span className="font-normal text-muted">({assigned.length})</span>
+          </h2>
+          {assigned.length > 0 && (
+            <p className="text-sm text-muted">
+              {assigned.filter((a) => a.execution === "completada").length} de {assigned.length} completaron la sesión
+            </p>
+          )}
+        </div>
         {editable && (
           <Button
             variant="secondary"
@@ -196,20 +206,42 @@ export function SessionAthletes({
         <p className="mt-3 text-sm text-muted">No hay atletas asignados.</p>
       ) : (
         <ul className="mt-3 divide-y divide-line">
-          {assigned.map((a) => (
-            <li key={a.athleteId} className="flex items-center gap-3 py-2">
-              <Avatar name={a.name} size="sm" />
-              <span className="min-w-0 flex-1">
-                <span className="block font-medium text-ink">{a.name}</span>
-                <span className="block text-xs text-muted">{a.division || "División sin definir"}</span>
-              </span>
-              {editable && (
-                <Button variant="ghost" onClick={() => setRemoving(a)} icon={<UserMinus aria-hidden className="size-4" />} aria-label={`Quitar a ${a.name} de la sesión`}>
-                  Quitar
-                </Button>
-              )}
-            </li>
-          ))}
+          {assigned.map((a) => {
+            const started = a.execution !== undefined && a.execution !== "sin_iniciar";
+            return (
+              <li key={a.athleteId} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
+                <Avatar name={a.name} size="sm" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium text-ink">{a.name}</span>
+                  <span className="block text-sm text-muted">{a.division || "División sin definir"}</span>
+                </span>
+                <span className="flex flex-wrap items-center gap-1.5">
+                  {a.execution && <ExecutionStatusBadge status={a.execution} />}
+                  {(a.discomfortCount ?? 0) > 0 && (
+                    <Badge tone="warning" icon={<AlertTriangle aria-hidden />}>
+                      {a.discomfortCount === 1 ? "1 molestia" : `${a.discomfortCount} molestias`}
+                    </Badge>
+                  )}
+                </span>
+                {started ? (
+                  <ButtonLink
+                    href={`/coach/sesiones/${sessionId}/atletas/${a.athleteId}`}
+                    variant="ghost"
+                    icon={<ChevronRight aria-hidden className="size-4" />}
+                    aria-label={`Ver resultados de ${a.name}`}
+                  >
+                    Resultados
+                  </ButtonLink>
+                ) : (
+                  editable && (
+                    <Button variant="ghost" onClick={() => setRemoving(a)} icon={<UserMinus aria-hidden className="size-4" />} aria-label={`Quitar a ${a.name} de la sesión`}>
+                      Quitar
+                    </Button>
+                  )
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 

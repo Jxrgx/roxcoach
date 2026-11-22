@@ -84,40 +84,54 @@ describe("SessionStatus", () => {
 });
 
 describe("SetLogger", () => {
+  const sled = { targetType: "distance" as const, reps: null, distanceMeters: 50, durationSeconds: null, loadKg: 152 };
+  const wallBalls = { targetType: "reps" as const, reps: 20, distanceMeters: null, durationSeconds: null, loadKg: null };
+
   it("separa planeado de realizado y guarda el resultado real", async () => {
     const user = userEvent.setup();
-    const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<SetLogger exerciseName="Sled Push" setNumber={1} totalSets={4} planned={{ loadKg: 152, distanceMeters: 12.5 }} onSave={onSave} />);
+    const onSave = vi.fn().mockResolvedValue({ ok: true });
+    render(<SetLogger exerciseName="Sled Push" setNumber={1} totalSets={4} planned={sled} unit="kg" onSave={onSave} />);
 
     expect(screen.getByText("Planeado")).toBeInTheDocument();
-    expect(screen.getByText("152 kg · 12.5 m")).toBeInTheDocument();
+    expect(screen.getByText("50 m · 152 kg")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Sumar 2.5 kg" }));
-    await user.click(screen.getByRole("radio", { name: "8" }));
-    await user.click(screen.getByRole("button", { name: "Guardar serie" }));
+    await user.click(screen.getByRole("radio", { name: "RPE 8" }));
+    await user.click(screen.getByRole("button", { name: "Completar serie" }));
 
-    expect(onSave).toHaveBeenCalledWith({ actualLoadKg: 154.5, actualAmount: 12.5, rpe: 8 });
+    expect(onSave.mock.calls[0]?.[0]).toEqual({ actualReps: null, actualDistanceMeters: 50, actualDurationSeconds: null, actualLoadKg: 154.5, rpe: 8 });
     expect(await screen.findByText("Serie guardada.")).toBeInTheDocument();
     // Lo planeado no cambia.
-    expect(screen.getByText("152 kg · 12.5 m")).toBeInTheDocument();
+    expect(screen.getByText("50 m · 152 kg")).toBeInTheDocument();
+  });
+
+  it("muestra la carga en la unidad del atleta y captura tiempo", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue({ ok: true });
+    const row = { targetType: "time" as const, reps: null, distanceMeters: null, durationSeconds: 60, loadKg: null };
+    render(<SetLogger exerciseName="Remo" setNumber={1} totalSets={2} planned={row} unit="lb" onSave={onSave} />);
+    const amount = screen.getByLabelText(/Tiempo real/);
+    expect(amount).toHaveValue("01:00");
+    await user.click(screen.getByRole("button", { name: "Sumar 5 segundos" }));
+    await user.click(screen.getByRole("button", { name: "Completar serie" }));
+    expect(onSave.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ actualDurationSeconds: 65, actualLoadKg: null }));
   });
 
   it("muestra errores y no guarda si faltan datos", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn();
-    render(<SetLogger exerciseName="Wall Balls" setNumber={1} totalSets={3} planned={{ reps: 20 }} onSave={onSave} />);
-    const amount = screen.getByLabelText(/Repeticiones real/);
-    await user.clear(amount);
-    await user.click(screen.getByRole("button", { name: "Guardar serie" }));
+    render(<SetLogger exerciseName="Wall Balls" setNumber={1} totalSets={3} planned={wallBalls} unit="kg" onSave={onSave} />);
+    await user.clear(screen.getByLabelText(/Repeticiones real/));
+    await user.click(screen.getByRole("button", { name: "Completar serie" }));
     expect(onSave).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("Ingresa repeticiones real.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Ingresa las repeticiones que hiciste.");
   });
 
   it("conserva los datos si falla el guardado", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockRejectedValue(new Error("red"));
-    render(<SetLogger exerciseName="Wall Balls" setNumber={1} totalSets={3} planned={{ reps: 20 }} onSave={onSave} />);
-    await user.click(screen.getByRole("button", { name: "Guardar serie" }));
+    render(<SetLogger exerciseName="Wall Balls" setNumber={1} totalSets={3} planned={wallBalls} unit="kg" onSave={onSave} />);
+    await user.click(screen.getByRole("button", { name: "Completar serie" }));
     expect(await screen.findByText(/No se pudo guardar/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Repeticiones real/)).toHaveValue("20");
   });

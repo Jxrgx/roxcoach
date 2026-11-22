@@ -5,6 +5,8 @@ import { formatDuration } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { Badge } from "@/components/ui/badge";
 import { Intensity } from "@/components/workouts/intensity";
+import { ExecutionStatusBadge } from "@/components/workouts/execution-status";
+import type { ExecutionStatus } from "@/lib/execution/progress";
 
 export interface SessionCardData {
   title: string;
@@ -16,6 +18,8 @@ export interface SessionCardData {
   intensity: WorkoutIntensityValue;
   /** Solo en la vista del coach. */
   athleteCount?: number;
+  /** Solo en la vista del atleta: su propia ejecución. */
+  execution?: ExecutionStatus;
 }
 
 /** Sesión programada (coach o atleta). Cancelada: icono + texto, no solo color. */
@@ -40,6 +44,7 @@ export function SessionCard({ session, href, highlight = false }: { session: Ses
             Cancelada
           </Badge>
         )}
+        {session.execution && session.execution !== "sin_iniciar" && <ExecutionStatusBadge status={session.execution} />}
       </div>
       <dl className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted">
         <div className="flex items-center gap-1.5">

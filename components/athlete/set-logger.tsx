@@ -2,19 +2,40 @@
 
 import { useId, useState, type FormEvent } from "react";
 import { CheckCircle2, Minus, Plus } from "lucide-react";
-import type { PlannedSet } from "@/lib/types/domain";
-import { validateSetResult, type SetResult, type SetResultInput, type FieldErrors } from "@/lib/validations";
+import { formatClock } from "@/lib/utils/format";
+import { formatSetTarget, parseDuration, type TargetTypeValue, type WeightUnit } from "@/lib/workouts/rules";
+import { initialSetInput } from "@/lib/execution/format";
+import type { ActualSet } from "@/lib/execution/progress";
+import { AMOUNT_LABEL, validateSetLog, type FieldErrors, type SetLogInput, type SetLogValue } from "@/lib/validations";
 import { cn } from "@/lib/utils/cn";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
+import { RpePicker } from "@/components/athlete/rpe-picker";
+
+export interface PlannedSetTarget {
+  targetType: TargetTypeValue;
+  reps: number | null;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  loadKg: number | null;
+}
+
+export type SaveSetResult = { ok: true } | { ok: false; message: string };
 
 interface SetLoggerProps {
   exerciseName: string;
   setNumber: number;
   totalSets: number;
-  planned: PlannedSet;
-  /** Persiste el resultado real. En esta fase lo resuelve el llamador (mock). */
-  onSave: (result: SetResult) => Promise<void>;
+  /** Lo planeado (del snapshot): solo se muestra, nunca se modifica. */
+  planned: PlannedSetTarget;
+  unit: WeightUnit;
+  /** Resultado ya registrado, para corregirlo. */
+  initial?: ActualSet | null;
+  /** Recibe lo validado y lo capturado (el servidor vuelve a validar). */
+  onSave: (value: SetLogValue, input: SetLogInput) => Promise<SaveSetResult>;
+  submitLabel?: string;
+  /** Durante la ejecución: el botón queda fijo sobre la navegación inferior en mobile. */
+  stickySubmit?: boolean;
 }
 
 function Stepper({
@@ -24,6 +45,7 @@ function Stepper({
   onChange,
   step,
   error,
+  time = false,
 }: {
   label: string;
   unit: string;
@@ -31,21 +53,27 @@ function Stepper({
   onChange: (v: string) => void;
   step: number;
   error?: string;
+  /** Captura mm:ss; los botones suman o restan segundos. */
+  time?: boolean;
 }) {
   const id = useId();
-  const n = Number(value.replace(",", "."));
-  const safe = Number.isFinite(n) ? n : 0;
-  const bump = (delta: number) => onChange(String(Math.max(0, Math.round((safe + delta) * 100) / 100)));
+  const current = time ? (parseDuration(value) ?? 0) : Number(value.replace(",", "."));
+  const safe = Number.isFinite(current) ? current : 0;
+  const bump = (delta: number) => {
+    const next = Math.max(0, Math.round((safe + delta) * 100) / 100);
+    onChange(time ? formatClock(next) : String(next));
+  };
+  const stepText = time ? `${step} segundos` : `${step} ${unit}`;
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium text-ink">
         {label} <span className="font-normal text-muted">({unit})</span>
       </label>
       <div className="flex items-center gap-2">
-        <IconButton label={`Restar ${step} ${unit}`} icon={<Minus />} variant="secondary" onClick={() => bump(-step)} className="size-12" />
+        <IconButton label={`Restar ${stepText}`} icon={<Minus />} variant="secondary" onClick={() => bump(-step)} className="size-12" />
         <input
           id={id}
-          inputMode="decimal"
+          inputMode={time ? "numeric" : "decimal"}
           autoComplete="off"
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -56,7 +84,7 @@ function Stepper({
             error ? "border-danger" : "border-line",
           )}
         />
-        <IconButton label={`Sumar ${step} ${unit}`} icon={<Plus />} variant="secondary" onClick={() => bump(step)} className="size-12" />
+        <IconButton label={`Sumar ${stepText}`} icon={<Plus />} variant="secondary" onClick={() => bump(step)} className="size-12" />
       </div>
       {error && (
         <p id={`${id}-error`} role="alert" className="text-sm text-danger">
@@ -67,32 +95,28 @@ function Stepper({
   );
 }
 
+const AMOUNT_UNIT: Record<TargetTypeValue, string> = { reps: "reps", distance: "m", time: "mm:ss" };
+const AMOUNT_STEP: Record<TargetTypeValue, number> = { reps: 1, distance: 5, time: 5 };
+
 /**
  * Registro de una serie. Lo planeado se muestra aparte y nunca se modifica;
- * el atleta solo confirma o ajusta lo realizado. RPE opcional.
+ * el atleta confirma o ajusta lo realizado (prellenado con el plan). RPE opcional.
  */
-export function SetLogger({ exerciseName, setNumber, totalSets, planned, onSave }: SetLoggerProps) {
-  const usesDistance = planned.distanceMeters !== undefined;
-  const amountLabel = usesDistance ? "Distancia" : "Repeticiones";
-  const requiresLoad = planned.loadKg !== undefined;
-
-  const [values, setValues] = useState<SetResultInput>({
-    load: planned.loadKg !== undefined ? String(planned.loadKg) : "",
-    amount: String(usesDistance ? planned.distanceMeters : (planned.reps ?? "")),
-    rpe: "",
-  });
-  const [errors, setErrors] = useState<FieldErrors<keyof SetResultInput>>({});
+export function SetLogger({ exerciseName, setNumber, totalSets, planned, unit, initial = null, onSave, submitLabel = "Completar serie", stickySubmit = false }: SetLoggerProps) {
+  const [values, setValues] = useState<SetLogInput>(() => initialSetInput(planned, initial, unit));
+  const [errors, setErrors] = useState<FieldErrors<keyof SetLogInput>>({});
   const [phase, setPhase] = useState<"editing" | "saving" | "saved" | "error">("editing");
-  const rpeName = useId();
+  const [errorMessage, setErrorMessage] = useState("");
+  const showLoad = planned.loadKg !== null || (initial?.actualLoadKg ?? null) !== null;
 
-  const set = (key: keyof SetResultInput) => (v: string) => {
+  const set = (key: keyof SetLogInput) => (v: string) => {
     setValues((prev) => ({ ...prev, [key]: v }));
     if (phase === "saved" || phase === "error") setPhase("editing");
   };
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const result = validateSetResult(values, { requiresLoad, amountLabel });
+    const result = validateSetLog(values, planned, unit);
     if (!result.ok) {
       setErrors(result.errors);
       return;
@@ -100,24 +124,23 @@ export function SetLogger({ exerciseName, setNumber, totalSets, planned, onSave 
     setErrors({});
     setPhase("saving");
     try {
-      await onSave(result.value);
-      setPhase("saved");
+      const saved = await onSave(result.value, values);
+      if (saved.ok) setPhase("saved");
+      else {
+        setErrorMessage(saved.message);
+        setPhase("error");
+      }
     } catch {
       // Conserva lo capturado para reintentar sin perder datos.
+      setErrorMessage("No se pudo guardar. Tus datos siguen aquí; intenta de nuevo.");
       setPhase("error");
     }
   }
 
-  const plannedParts = [
-    planned.loadKg !== undefined && `${planned.loadKg} kg`,
-    planned.distanceMeters !== undefined && `${planned.distanceMeters} m`,
-    planned.reps !== undefined && `${planned.reps} reps`,
-  ].filter(Boolean);
-
   return (
-    <form onSubmit={submit} noValidate className="rounded-2xl border border-line bg-surface p-5" aria-label={`Registrar serie ${setNumber} de ${exerciseName}`}>
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-lg font-semibold text-ink">{exerciseName}</h3>
+    <form onSubmit={submit} noValidate className="rounded-2xl border border-line bg-surface p-4 sm:p-5" aria-label={`Registrar serie ${setNumber} de ${exerciseName}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 className="text-xl font-bold text-ink">{exerciseName}</h2>
         <p className="text-sm font-semibold tabular-nums text-acid">
           Serie {setNumber} de {totalSets}
         </p>
@@ -125,49 +148,23 @@ export function SetLogger({ exerciseName, setNumber, totalSets, planned, onSave 
 
       {/* Planeado: solo lectura, visualmente separado de lo realizado. */}
       <div className="mt-3 rounded-xl border border-dashed border-line px-3.5 py-2.5">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">Planeado</p>
-        <p className="mt-0.5 font-semibold tabular-nums text-ink">{plannedParts.join(" · ")}</p>
+        <p className="text-sm font-medium text-muted">Planeado</p>
+        <p className="mt-0.5 text-lg font-semibold tabular-nums text-ink">{formatSetTarget(planned, unit)}</p>
       </div>
 
-      <p className="mt-5 text-xs font-medium uppercase tracking-wide text-muted">Realizado</p>
+      <p className="mt-5 text-sm font-medium text-muted">Realizado</p>
       <div className="mt-2 flex flex-col gap-4">
-        {requiresLoad && <Stepper label="Carga real" unit="kg" step={2.5} value={values.load} onChange={set("load")} error={errors.load} />}
         <Stepper
-          label={`${amountLabel} real`}
-          unit={usesDistance ? "m" : "reps"}
-          step={usesDistance ? 5 : 1}
+          label={`${AMOUNT_LABEL[planned.targetType]} real`}
+          unit={AMOUNT_UNIT[planned.targetType]}
+          step={AMOUNT_STEP[planned.targetType]}
+          time={planned.targetType === "time"}
           value={values.amount}
           onChange={set("amount")}
           error={errors.amount}
         />
-        <fieldset>
-          <legend className="text-sm font-medium text-ink">
-            Esfuerzo percibido (RPE) <span className="font-normal text-muted">(opcional)</span>
-          </legend>
-          <div className="mt-2 grid grid-cols-5 gap-1.5">
-            {Array.from({ length: 10 }, (_, i) => String(i + 1)).map((v) => (
-              <label key={v} className="relative">
-                <input
-                  type="radio"
-                  name={rpeName}
-                  value={v}
-                  checked={values.rpe === v}
-                  onChange={() => set("rpe")(v)}
-                  onClick={() => values.rpe === v && set("rpe")("")}
-                  className="peer sr-only"
-                />
-                <span className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-line bg-surface-2 font-semibold tabular-nums text-ink peer-checked:border-electric peer-checked:bg-electric/15 peer-focus-visible:outline-2 peer-focus-visible:outline-electric">
-                  {v}
-                </span>
-              </label>
-            ))}
-          </div>
-          {errors.rpe && (
-            <p role="alert" className="mt-1.5 text-sm text-danger">
-              {errors.rpe}
-            </p>
-          )}
-        </fieldset>
+        {showLoad && <Stepper label="Carga real" unit={unit} step={unit === "lb" ? 5 : 2.5} value={values.load} onChange={set("load")} error={errors.load} />}
+        <RpePicker legend="Esfuerzo de la serie (RPE)" value={values.rpe} onChange={set("rpe")} error={errors.rpe} />
       </div>
 
       <div aria-live="polite" className="mt-4 min-h-6 text-sm">
@@ -176,12 +173,20 @@ export function SetLogger({ exerciseName, setNumber, totalSets, planned, onSave 
             <CheckCircle2 aria-hidden className="size-4" /> Serie guardada.
           </p>
         )}
-        {phase === "error" && <p className="text-danger">No se pudo guardar. Tus datos siguen aquí; intenta de nuevo.</p>}
+        {phase === "error" && <p className="text-danger">{errorMessage}</p>}
       </div>
 
-      <Button type="submit" size="lg" fullWidth className="mt-2" loading={phase === "saving"} loadingLabel="Guardando serie…">
-        {phase === "saved" ? "Guardar cambios" : "Guardar serie"}
-      </Button>
+      <div
+        className={cn(
+          "mt-2",
+          stickySubmit &&
+            "sticky bottom-[calc(var(--spacing-bottom-nav)+env(safe-area-inset-bottom)+0.5rem)] z-10 -mx-1 rounded-2xl bg-surface/95 px-1 py-1 backdrop-blur md:static md:bg-transparent md:p-0 md:backdrop-blur-none",
+        )}
+      >
+        <Button type="submit" size="lg" fullWidth loading={phase === "saving"} loadingLabel="Guardando serie…">
+          {submitLabel}
+        </Button>
+      </div>
     </form>
   );
 }

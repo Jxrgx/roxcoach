@@ -1,4 +1,10 @@
-import { parseDuration } from "@/lib/workouts/rules";
+import { loadToKg, parseDuration, type TargetTypeValue, type WeightUnit } from "@/lib/workouts/rules";
+import {
+  DISCOMFORT_INTENSITIES,
+  DISCOMFORT_ZONES,
+  type DiscomfortIntensityValue,
+  type DiscomfortZoneValue,
+} from "@/lib/execution/discomfort";
 import { isDateKey } from "@/lib/scheduling/dates";
 
 /**
@@ -20,49 +26,117 @@ function parseNumber(raw: string): number | null {
 
 /* ---------- Registro de serie (SetLogger) ---------- */
 
-export interface SetResultInput {
-  load: string;
+/** Lo que el atleta captura (texto de los campos). */
+export interface SetLogInput {
+  /** Repeticiones, metros o tiempo ("1:30" / "90"), según el objetivo planeado. */
   amount: string;
+  /** En la unidad del atleta. */
+  load: string;
   rpe: string;
 }
 
-export interface SetResult {
-  actualLoadKg?: number;
-  actualAmount: number;
-  rpe?: number;
+/** Valores reales validados (carga ya convertida a kg). */
+export interface SetLogValue {
+  actualReps: number | null;
+  actualDistanceMeters: number | null;
+  actualDurationSeconds: number | null;
+  actualLoadKg: number | null;
+  rpe: number | null;
 }
 
-export function validateSetResult(
-  input: SetResultInput,
-  options: { requiresLoad: boolean; amountLabel: string },
-): { ok: true; value: SetResult } | { ok: false; errors: FieldErrors<keyof SetResultInput> } {
-  const errors: FieldErrors<keyof SetResultInput> = {};
+export const AMOUNT_LABEL: Record<TargetTypeValue, string> = { reps: "Repeticiones", distance: "Distancia", time: "Tiempo" };
 
-  const load = parseNumber(input.load);
-  if (options.requiresLoad) {
-    if (load === null) errors.load = "Ingresa la carga que usaste.";
-    else if (Number.isNaN(load) || load < 0 || load > 500) errors.load = "La carga debe estar entre 0 y 500.";
-  } else if (load !== null && (Number.isNaN(load) || load < 0 || load > 500)) {
-    errors.load = "La carga debe estar entre 0 y 500.";
+/**
+ * Valida el resultado real de una serie contra su objetivo planeado:
+ * mide lo mismo que el plan (reps, distancia o tiempo); la carga es
+ * obligatoria si el plan tiene carga. RPE opcional (1–10).
+ */
+export function validateSetLog(
+  input: SetLogInput,
+  planned: { targetType: TargetTypeValue; loadKg: number | null },
+  unit: WeightUnit,
+): { ok: true; value: SetLogValue } | { ok: false; errors: FieldErrors<keyof SetLogInput> } {
+  const errors: FieldErrors<keyof SetLogInput> = {};
+  const label = AMOUNT_LABEL[planned.targetType];
+  let amount: number | null = null;
+
+  if (planned.targetType === "time") {
+    if (!input.amount.trim()) errors.amount = "Ingresa el tiempo que hiciste.";
+    else {
+      amount = parseDuration(input.amount);
+      if (amount === null || amount <= 0 || amount > 86_400) errors.amount = "Usa segundos o mm:ss (por ejemplo, 1:30).";
+    }
+  } else {
+    const n = parseNumber(input.amount);
+    const max = planned.targetType === "reps" ? 10_000 : 100_000;
+    if (n === null) errors.amount = `Ingresa ${planned.targetType === "reps" ? "las repeticiones" : "la distancia"} que hiciste.`;
+    else if (Number.isNaN(n) || !Number.isInteger(n) || n < 0 || n > max) errors.amount = `${label} debe ser un número entero entre 0 y ${max.toLocaleString("es-MX")}.`;
+    else amount = n;
   }
 
-  const amount = parseNumber(input.amount);
-  if (amount === null) errors.amount = `Ingresa ${options.amountLabel.toLowerCase()} real.`;
-  else if (Number.isNaN(amount) || amount <= 0 || amount > 100_000)
-    errors.amount = `${options.amountLabel} debe ser un número mayor a 0.`;
+  const maxLoad = unit === "lb" ? 1100 : 500;
+  const load = parseNumber(input.load);
+  if (load === null) {
+    if (planned.loadKg !== null) errors.load = "Ingresa la carga que usaste.";
+  } else if (Number.isNaN(load) || load < 0 || load > maxLoad) errors.load = `La carga debe estar entre 0 y ${maxLoad} ${unit}.`;
 
   const rpe = parseNumber(input.rpe);
-  if (rpe !== null && (Number.isNaN(rpe) || !Number.isInteger(rpe) || rpe < 1 || rpe > 10))
-    errors.rpe = "El RPE va de 1 a 10.";
+  if (rpe !== null && (Number.isNaN(rpe) || !Number.isInteger(rpe) || rpe < 1 || rpe > 10)) errors.rpe = "El RPE va de 1 a 10.";
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
   return {
     ok: true,
     value: {
-      actualAmount: amount as number,
-      ...(load !== null ? { actualLoadKg: load } : {}),
-      ...(rpe !== null ? { rpe } : {}),
+      actualReps: planned.targetType === "reps" ? amount : null,
+      actualDistanceMeters: planned.targetType === "distance" ? amount : null,
+      actualDurationSeconds: planned.targetType === "time" ? amount : null,
+      actualLoadKg: load === null ? null : Math.min(500, loadToKg(load, unit)),
+      rpe,
     },
+  };
+}
+
+/* ---------- Cierre de la sesión (RPE general y comentario) ---------- */
+
+export interface SessionFeedbackInput {
+  rpe: string;
+  comment: string;
+}
+
+export function validateSessionFeedback(
+  input: SessionFeedbackInput,
+): { ok: true; value: { rpe: number | null; comment: string | null } } | { ok: false; errors: FieldErrors<keyof SessionFeedbackInput> } {
+  const errors: FieldErrors<keyof SessionFeedbackInput> = {};
+  const rpe = parseNumber(input.rpe);
+  if (rpe !== null && (Number.isNaN(rpe) || !Number.isInteger(rpe) || rpe < 1 || rpe > 10)) errors.rpe = "El RPE va de 1 a 10.";
+  const comment = input.comment.trim();
+  if (comment.length > 1000) errors.comment = "Máximo 1000 caracteres.";
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
+  return { ok: true, value: { rpe, comment: comment || null } };
+}
+
+/* ---------- Reporte de molestia ---------- */
+
+export interface DiscomfortInput {
+  zone: string;
+  intensity: string;
+  note: string;
+}
+
+export function validateDiscomfort(
+  input: DiscomfortInput,
+):
+  | { ok: true; value: { zone: DiscomfortZoneValue; intensity: DiscomfortIntensityValue; note: string | null } }
+  | { ok: false; errors: FieldErrors<keyof DiscomfortInput> } {
+  const errors: FieldErrors<keyof DiscomfortInput> = {};
+  if (!(DISCOMFORT_ZONES as readonly string[]).includes(input.zone)) errors.zone = "Elige la zona de la molestia.";
+  if (!(DISCOMFORT_INTENSITIES as readonly string[]).includes(input.intensity)) errors.intensity = "Elige qué tan fuerte es.";
+  const note = input.note.trim();
+  if (note.length > 500) errors.note = "Máximo 500 caracteres.";
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    value: { zone: input.zone as DiscomfortZoneValue, intensity: input.intensity as DiscomfortIntensityValue, note: note || null },
   };
 }
 

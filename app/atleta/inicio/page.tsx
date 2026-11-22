@@ -3,13 +3,14 @@ import Link from "next/link";
 import { CalendarCheck, Clock, Layers, PauseCircle, Play } from "lucide-react";
 import { requireAthlete } from "@/lib/auth/session";
 import { findAthleteCoach } from "@/lib/db/athletes";
-import { listAthleteSessions, listUpcomingAthleteSessions } from "@/lib/db/sessions";
+import { findInProgressAthleteSession, listAthleteSessions, listUpcomingAthleteSessions } from "@/lib/db/sessions";
 import { addDaysKey, mondayOf, relativeDayKey, todayKey } from "@/lib/scheduling/dates";
 import { APP_TIME_ZONE, formatDuration } from "@/lib/utils/format";
 import { RaceCountdown } from "@/components/athlete/race-countdown";
 import { ScreenStates } from "@/components/shared/screen-states";
 import { SessionCard } from "@/components/workouts/session-card";
 import { Intensity } from "@/components/workouts/intensity";
+import { ExecutionStatusBadge } from "@/components/workouts/execution-status";
 import { ButtonLink } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/card";
 import { StateMessage } from "@/components/ui/state-message";
@@ -20,14 +21,23 @@ export default async function AthleteHomePage() {
   const athlete = await requireAthlete();
   const today = todayKey(APP_TIME_ZONE);
   const monday = mondayOf(today);
-  const [coach, todays, upcomingAll, week] = await Promise.all([
+  const [coach, inProgress, todays, upcomingAll, week] = await Promise.all([
     findAthleteCoach(athlete.id),
+    findInProgressAthleteSession(athlete.id),
     listAthleteSessions(athlete.id, today, today),
     listUpcomingAthleteSessions(athlete.id, addDaysKey(today, 1), 2),
     listAthleteSessions(athlete.id, monday, addDaysKey(monday, 6)),
   ]);
   const firstName = athlete.name.split(" ")[0];
-  const current = todays.find((s) => s.status === "programada");
+  const todaysScheduled = todays.filter((s) => s.status === "programada");
+  // Primero una sesión que quedó en curso; luego la de hoy sin completar.
+  const current = inProgress ?? todaysScheduled.find((s) => s.execution !== "completada") ?? todaysScheduled[0];
+  const cta =
+    current?.execution === "en_curso"
+      ? { href: `/atleta/sesiones/${current.id}/ejecutar`, label: "Continuar entrenamiento" }
+      : current?.execution === "completada"
+        ? { href: `/atleta/sesiones/${current.id}/resumen`, label: "Ver resumen" }
+        : { href: `/atleta/sesiones/${current?.id}`, label: "Comenzar entrenamiento" };
   const weekScheduled = week.filter((s) => s.status === "programada").length;
 
   return (
@@ -60,11 +70,17 @@ export default async function AthleteHomePage() {
         {current ? (
           <section aria-labelledby="hoy" className="rounded-2xl border border-line bg-surface-2 p-5 shadow-card">
             <p className="text-sm font-semibold text-acid">
-              Entrenamiento de hoy{current.startTime ? <span className="tabular-nums"> · {current.startTime}</span> : null}
+              {current.date === today ? "Entrenamiento de hoy" : `Sesión en curso · ${relativeDayKey(current.date, today)}`}
+              {current.startTime ? <span className="tabular-nums"> · {current.startTime}</span> : null}
             </p>
             <h2 id="hoy" className="mt-1 text-2xl font-bold tracking-tight text-ink">
               {current.title}
             </h2>
+            {current.execution !== "sin_iniciar" && (
+              <div className="mt-2">
+                <ExecutionStatusBadge status={current.execution} />
+              </div>
+            )}
             <dl className="mt-4 grid grid-cols-3 gap-2">
               <div className="rounded-xl bg-surface p-3">
                 <dt className="flex items-center gap-1 text-xs text-muted">
@@ -86,8 +102,15 @@ export default async function AthleteHomePage() {
               </div>
             </dl>
             <p className="mt-3 text-sm text-muted">{current.snapshot.blocks.map((b) => b.name).join(" · ")}</p>
-            <ButtonLink href={`/atleta/sesiones/${current.id}`} size="lg" fullWidth className="mt-5" icon={<Play aria-hidden className="size-5" />}>
-              Comenzar entrenamiento
+            <ButtonLink
+              href={cta.href}
+              size="lg"
+              fullWidth
+              variant={current.execution === "completada" ? "secondary" : "primary"}
+              className="mt-5"
+              icon={<Play aria-hidden className="size-5" />}
+            >
+              {cta.label}
             </ButtonLink>
           </section>
         ) : (

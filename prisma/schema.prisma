@@ -177,13 +177,13 @@ enum ExerciseMediaType {
 /// archivedAt lo oculta de la biblioteca sin borrarlo (las plantillas futuras
 /// podrán seguir referenciándolo).
 model Exercise {
-  id           String              @id @default(uuid()) @db.Uuid
-  coachId      String?             @map("coach_id") @db.Uuid
-  coach        CoachProfile?       @relation(fields: [coachId], references: [profileId], onDelete: Cascade)
+  id           String             @id @default(uuid()) @db.Uuid
+  coachId      String?            @map("coach_id") @db.Uuid
+  coach        CoachProfile?      @relation(fields: [coachId], references: [profileId], onDelete: Cascade)
   /// Ejercicio del que se duplicó ("Duplicar como propio"), si aplica.
-  sourceId     String?             @map("source_id") @db.Uuid
-  source       Exercise?           @relation("ExerciseCopies", fields: [sourceId], references: [id], onDelete: SetNull)
-  copies       Exercise[]          @relation("ExerciseCopies")
+  sourceId     String?            @map("source_id") @db.Uuid
+  source       Exercise?          @relation("ExerciseCopies", fields: [sourceId], references: [id], onDelete: SetNull)
+  copies       Exercise[]         @relation("ExerciseCopies")
   name         String
   category     ExerciseCategory
   difficulty   ExerciseDifficulty
@@ -191,13 +191,13 @@ model Exercise {
   /// Indicación clave, breve.
   cue          String?
   /// Catálogo EQUIPMENT_OPTIONS (el mismo del perfil del atleta).
-  equipment    String[]            @default([])
-  mediaType    ExerciseMediaType?  @map("media_type")
+  equipment    String[]           @default([])
+  mediaType    ExerciseMediaType? @map("media_type")
   /// Solo https (validado en la app y en la BD).
-  mediaUrl     String?             @map("media_url")
-  archivedAt   DateTime?           @map("archived_at") @db.Timestamptz(6)
-  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  mediaUrl     String?            @map("media_url")
+  archivedAt   DateTime?          @map("archived_at") @db.Timestamptz(6)
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   substitutions ExerciseSubstitution[] @relation("ExerciseSubstitutions")
   substituteOf  ExerciseSubstitution[] @relation("SubstituteExercises")
@@ -365,7 +365,109 @@ model Assignment {
   createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  /// Registro realizado (fase 7). Nunca modifica el snapshot.
+  log SessionLog?
+
   @@unique([sessionId, athleteId])
   @@index([athleteId, status])
   @@map("assignments")
+}
+
+// ============================================================================
+// Ejecución del atleta (fase 7): datos REALES, separados de lo planeado.
+// Las series se ubican por su posición en el snapshot congelado de la sesión
+// (bloque, ejercicio, serie), que nunca cambia.
+// ============================================================================
+
+enum SessionLogStatus {
+  en_curso
+  completada
+
+  @@map("session_log_status")
+}
+
+enum DiscomfortZone {
+  cuello
+  hombro
+  codo_muneca
+  espalda_alta
+  espalda_baja
+  cadera
+  muslo
+  rodilla
+  pantorrilla
+  tobillo_pie
+  otra
+
+  @@map("discomfort_zone")
+}
+
+enum DiscomfortIntensity {
+  leve
+  moderada
+  fuerte
+
+  @@map("discomfort_intensity")
+}
+
+/// Una ejecución por asignación: inicio, pausas, fin y retroalimentación general.
+model SessionLog {
+  id            String           @id @default(uuid()) @db.Uuid
+  assignmentId  String           @unique @map("assignment_id") @db.Uuid
+  assignment    Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  status        SessionLogStatus @default(en_curso)
+  startedAt     DateTime         @default(now()) @map("started_at") @db.Timestamptz(6)
+  /// Inicio de la pausa actual (null si no está en pausa).
+  pausedAt      DateTime?        @map("paused_at") @db.Timestamptz(6)
+  /// Segundos en pausa ya cerrados (pausas anteriores).
+  pausedSeconds Int              @default(0) @map("paused_seconds")
+  finishedAt    DateTime?        @map("finished_at") @db.Timestamptz(6)
+  /// RPE general de la sesión (1–10).
+  rpe           Int?
+  comment       String?
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  sets        SetLog[]
+  discomforts DiscomfortReport[]
+
+  @@map("session_logs")
+}
+
+/// Resultado real de una serie. Lo planeado sigue en el snapshot.
+model SetLog {
+  id                    String     @id @default(uuid()) @db.Uuid
+  sessionLogId          String     @map("session_log_id") @db.Uuid
+  sessionLog            SessionLog @relation(fields: [sessionLogId], references: [id], onDelete: Cascade)
+  blockIndex            Int        @map("block_index")
+  exerciseIndex         Int        @map("exercise_index")
+  /// Número de serie (empieza en 1).
+  setNumber             Int        @map("set_number")
+  actualReps            Int?       @map("actual_reps")
+  actualDistanceMeters  Int?       @map("actual_distance_meters")
+  actualDurationSeconds Int?       @map("actual_duration_seconds")
+  actualLoadKg          Float?     @map("actual_load_kg")
+  rpe                   Int?
+  createdAt             DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([sessionLogId, blockIndex, exerciseIndex, setNumber])
+  @@map("set_logs")
+}
+
+/// Reporte de molestia o dolor durante (o al final de) la sesión.
+model DiscomfortReport {
+  id            String              @id @default(uuid()) @db.Uuid
+  sessionLogId  String              @map("session_log_id") @db.Uuid
+  sessionLog    SessionLog          @relation(fields: [sessionLogId], references: [id], onDelete: Cascade)
+  zone          DiscomfortZone
+  intensity     DiscomfortIntensity
+  note          String?
+  /// Ejercicio en curso al reportar (posición en el snapshot), si aplica.
+  blockIndex    Int?                @map("block_index")
+  exerciseIndex Int?                @map("exercise_index")
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([sessionLogId])
+  @@map("discomfort_reports")
 }

@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireAthlete } from "@/lib/auth/session";
 import { findAthleteSession } from "@/lib/db/sessions";
-import { mondayOf } from "@/lib/scheduling/dates";
+import { mondayOf, todayKey } from "@/lib/scheduling/dates";
+import { APP_TIME_ZONE } from "@/lib/utils/format";
 import { ScreenStates } from "@/components/shared/screen-states";
 import { AthleteSessionDetail } from "@/components/athlete/athlete-session-detail";
 
@@ -28,7 +29,7 @@ export default async function AthleteSessionPage({ params }: PageProps<"/atleta/
         empty={{ title: "No encontramos esta sesión", description: "Recarga la página para intentarlo de nuevo." }}
         loadingLabel="Cargando sesión…"
       >
-        <AthleteSessionDetail session={session} unit={athlete.weightUnit} />
+        <AthleteSessionDetail session={session} unit={athlete.weightUnit} today={todayKey(APP_TIME_ZONE)} />
       </ScreenStates>
     </>
   );

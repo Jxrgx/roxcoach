@@ -6,7 +6,10 @@ import { snapshotEquipment } from "@/lib/scheduling/snapshot";
 import { formatPrescription, type WeightUnit } from "@/lib/workouts/rules";
 import { formatDuration } from "@/lib/utils/format";
 import { Disclosure } from "@/components/ui/disclosure";
-import { ComingSoonButton } from "@/components/shared/coming-soon-button";
+import { ButtonLink } from "@/components/ui/button";
+import { startAvailability } from "@/lib/execution/progress";
+import { ExecutionStatusBadge } from "@/components/workouts/execution-status";
+import { StartSessionButton } from "@/components/athlete/start-session-button";
 import { StickyActions } from "@/components/shared/sticky-actions";
 import { Intensity } from "@/components/workouts/intensity";
 
@@ -15,9 +18,22 @@ import { Intensity } from "@/components/workouts/intensity";
  * Nivel 1: qué es y "Comenzar". Nivel 2: duración, bloques, intensidad.
  * Nivel 3 (acordeones): ejercicios de cada bloque y equipo.
  */
-export function AthleteSessionDetail({ session, unit, eyebrow }: { session: AthleteSessionDTO; unit: WeightUnit; eyebrow?: string }) {
+export function AthleteSessionDetail({
+  session,
+  unit,
+  today,
+  eyebrow,
+}: {
+  session: AthleteSessionDTO;
+  unit: WeightUnit;
+  /** Hoy (zona de la app): decide si ya se puede comenzar. */
+  today: string;
+  eyebrow?: string;
+}) {
   const s = session.snapshot;
   const cancelled = session.status === "cancelada";
+  const availability = startAvailability({ sessionStatus: session.status, date: session.date, today, execution: session.execution });
+  const executionHref = `/atleta/sesiones/${session.id}/${session.execution === "completada" ? "resumen" : "ejecutar"}`;
   const equipment = snapshotEquipment(s);
 
   return (
@@ -33,6 +49,11 @@ export function AthleteSessionDetail({ session, unit, eyebrow }: { session: Athl
           {session.startTime && <span className="tabular-nums">· {session.startTime}</span>}
         </p>
         <h1 className="mt-1 text-3xl font-bold tracking-tight text-ink">{session.title}</h1>
+        {session.execution !== "sin_iniciar" && (
+          <div className="mt-2">
+            <ExecutionStatusBadge status={session.execution} />
+          </div>
+        )}
         {s.focus && <p className="mt-1.5 text-sm text-muted">{s.focus}</p>}
         <p className="mt-1 text-sm text-muted">Con {session.coachName}</p>
         <dl className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
@@ -144,20 +165,28 @@ export function AthleteSessionDetail({ session, unit, eyebrow }: { session: Athl
         </section>
       )}
 
-      {!cancelled && (
+      {session.execution !== "sin_iniciar" ? (
         <StickyActions>
-          <ComingSoonButton
+          <ButtonLink
+            href={executionHref}
             size="lg"
             fullWidth
             className="sm:w-auto sm:min-w-64"
             icon={<Play aria-hidden className="size-5" />}
-            module="ejecución de entrenamiento"
-            description="Verás el bloque y la serie activa, el temporizador y podrás registrar tus resultados con una mano."
           >
-            Comenzar
-          </ComingSoonButton>
+            {session.execution === "completada" ? "Ver resumen" : "Continuar entrenamiento"}
+          </ButtonLink>
         </StickyActions>
-      )}
+      ) : availability === "disponible" ? (
+        <StickyActions>
+          <StartSessionButton sessionId={session.id} />
+        </StickyActions>
+      ) : availability === "futura" ? (
+        <p role="note" className="mt-6 flex items-start gap-2.5 rounded-2xl border border-line bg-surface p-4 text-sm text-muted">
+          <CalendarDays aria-hidden className="mt-0.5 size-4 shrink-0" />
+          Podrás comenzarla el {formatKeyLong(session.date).toLowerCase()}.
+        </p>
+      ) : null}
     </div>
   );
 }

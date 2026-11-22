@@ -248,8 +248,10 @@ export function ComponentCatalog() {
               exerciseName="Sled Push"
               setNumber={2}
               totalSets={4}
-              planned={{ loadKg: 152, distanceMeters: 12.5 }}
-              onSave={() => new Promise((r) => setTimeout(r, 700))}
+              planned={{ targetType: "distance", reps: null, distanceMeters: 50, durationSeconds: null, loadKg: 152 }}
+              unit="kg"
+              submitLabel="Guardar serie"
+              onSave={() => new Promise((r) => setTimeout(() => r({ ok: true }), 700))}
             />
           </div>
         </div>

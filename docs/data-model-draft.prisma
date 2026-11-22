@@ -16,6 +16,10 @@
 //                   ("HH:MM" opcional), usa estados programada/cancelada en la
 //                   sesión y asignada/retirada en la asignación, y aún no tiene
 //                   overrides — ver prisma/schema.prisma).
+//   [FASE 7]        ejecución: SessionLog, SetLog y DiscomfortReport (implementadas;
+//                   las series se ubican por su posición en el snapshot —
+//                   bloque, ejercicio, serie— y la pausa se guarda con
+//                   paused_at / paused_seconds — ver prisma/schema.prisma).
 //   [FUTURO]        diseño previsto; puede cambiar al implementarse.
 //
 // Separación obligatoria del dominio (CLAUDE.md):
@@ -189,9 +193,9 @@ enum TemplateStatus {
   archivada
 }
 
-// [FUTURO] Estado de ejecución del atleta. En la fase 6 la asignación solo
-// tiene asignada/retirada; el progreso de la ejecución se modelará con SessionLog
-// o con estos valores al implementar la ejecución.
+// [DESCARTADO] Estado de ejecución en la asignación. Desde la fase 7 la
+// asignación solo tiene asignada/retirada y el progreso vive en SessionLog
+// (en_curso / completada; sin registro = sin iniciar).
 enum AssignmentStatus {
   programada
   en_curso
@@ -263,7 +267,8 @@ model Assignment {
   @@unique([sessionId, athleteId])
 }
 
-/// [FUTURO] Registro realizado (resultados reales).
+/// [FASE 7 — implementado; ver prisma/schema.prisma para los campos reales]
+/// Registro realizado (resultados reales).
 model SessionLog {
   id           String    @id @db.Uuid
   assignmentId String    @unique @db.Uuid
@@ -274,6 +279,7 @@ model SessionLog {
   sets SetLog[]
 }
 
+/// [FASE 7 — implementado]
 model SetLog {
   id                    String   @id @db.Uuid
   sessionLogId          String   @db.Uuid // CASCADE

@@ -5,6 +5,7 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { findTemplateForCoach } from "@/lib/db/templates";
 import { buildSnapshot, parseSnapshot, snapshotExerciseCount, type SessionSnapshotV1 } from "@/lib/scheduling/snapshot";
 import type { WorkoutIntensityValue } from "@/lib/workouts/rules";
+import type { ExecutionStatus } from "@/lib/execution/progress";
 
 /**
  * Sesiones programadas y asignaciones.
@@ -32,6 +33,9 @@ export interface SessionAthleteDTO {
   athleteId: string;
   name: string;
   division: string;
+  /** Solo en el detalle de la sesión (atletas asignados). */
+  execution?: ExecutionStatus;
+  discomfortCount?: number;
 }
 
 export interface CoachSessionDetailDTO extends SessionSummaryDTO {
@@ -45,6 +49,8 @@ export interface AthleteSessionDTO extends SessionSummaryDTO {
   notes: string;
   coachName: string;
   snapshot: SessionSnapshotV1;
+  /** Estado de la ejecución del propio atleta. */
+  execution: ExecutionStatus;
 }
 
 const keyOf = (d: Date) => d.toISOString().slice(0, 10);
@@ -90,7 +96,10 @@ export async function findCoachSession(coachId: string, id: string): Promise<Coa
     include: {
       assignments: {
         where: { status: "asignada" },
-        include: { athlete: { select: { division: true, profile: { select: { name: true } } } } },
+        include: {
+          athlete: { select: { division: true, profile: { select: { name: true } } } },
+          log: { select: { status: true, _count: { select: { discomforts: true } } } },
+        },
         orderBy: { createdAt: "asc" },
       },
     },
@@ -101,7 +110,10 @@ export async function findCoachSession(coachId: string, id: string): Promise<Coa
     notes: s.notes ?? "",
     templateId: s.templateId,
     snapshot: parseSnapshot(s.snapshot) ?? EMPTY_SNAPSHOT,
-    athletes: toSessionAthletes(s.assignments),
+    athletes: toSessionAthletes(s.assignments).map((a) => {
+      const log = s.assignments.find((r) => r.athleteId === a.athleteId)?.log;
+      return { ...a, execution: log?.status ?? "sin_iniciar", discomfortCount: log?._count.discomforts ?? 0 };
+    }),
   };
 }
 
@@ -224,24 +236,37 @@ export async function addAthletesToSession(
   });
 }
 
-/** Retira a un atleta de una sesión propia (no borra: queda "retirada"). */
-export async function removeAthleteFromSession(coachId: string, sessionId: string, athleteId: string): Promise<boolean> {
+/**
+ * Retira a un atleta de una sesión propia (no borra: queda "retirada").
+ * Si ya la comenzó no se retira, para conservar su historial (también lo
+ * impide un trigger en la BD).
+ */
+export async function removeAthleteFromSession(coachId: string, sessionId: string, athleteId: string): Promise<"ok" | "not-found" | "started"> {
+  const started = await db().sessionLog.count({ where: { assignment: { sessionId, athleteId, session: { coachId } } } });
+  if (started > 0) return "started";
   const result = await db().assignment.updateMany({
     where: { sessionId, athleteId, status: "asignada", session: { coachId, status: "programada" } },
     data: { status: "retirada" },
   });
-  return result.count === 1;
+  return result.count === 1 ? "ok" : "not-found";
 }
 
 /* ---------- Atleta ---------- */
 
 const ATHLETE_INCLUDE = {
   coach: { select: { profile: { select: { name: true } } } },
-  assignments: { select: { status: true } },
+  assignments: { select: { status: true, athleteId: true, log: { select: { status: true } } } },
 } satisfies Prisma.ScheduledSessionInclude;
 
-function toAthleteSession(s: Prisma.ScheduledSessionGetPayload<{ include: typeof ATHLETE_INCLUDE }>): AthleteSessionDTO {
-  return { ...toSummary(s), notes: s.notes ?? "", coachName: s.coach.profile.name, snapshot: parseSnapshot(s.snapshot) ?? EMPTY_SNAPSHOT };
+function toAthleteSession(athleteId: string, s: Prisma.ScheduledSessionGetPayload<{ include: typeof ATHLETE_INCLUDE }>): AthleteSessionDTO {
+  const own = s.assignments.find((a) => a.athleteId === athleteId && a.status === "asignada");
+  return {
+    ...toSummary(s),
+    notes: s.notes ?? "",
+    coachName: s.coach.profile.name,
+    snapshot: parseSnapshot(s.snapshot) ?? EMPTY_SNAPSHOT,
+    execution: own?.log?.status ?? "sin_iniciar",
+  };
 }
 
 /** Sesiones asignadas al atleta entre dos fechas (incluye canceladas, para avisarle). */
@@ -251,7 +276,7 @@ export async function listAthleteSessions(athleteId: string, from: string, to: s
     include: ATHLETE_INCLUDE,
     orderBy: ORDER,
   });
-  return rows.map(toAthleteSession);
+  return rows.map((r) => toAthleteSession(athleteId, r));
 }
 
 /** Próximas sesiones programadas del atleta desde una fecha (inclusive). */
@@ -262,7 +287,7 @@ export async function listUpcomingAthleteSessions(athleteId: string, from: strin
     orderBy: ORDER,
     take: limit,
   });
-  return rows.map(toAthleteSession);
+  return rows.map((r) => toAthleteSession(athleteId, r));
 }
 
 /** Detalle para el atleta: solo si tiene una asignación vigente en esa sesión. */
@@ -271,5 +296,15 @@ export async function findAthleteSession(athleteId: string, id: string): Promise
     where: { id, assignments: { some: { athleteId, status: "asignada" } } },
     include: ATHLETE_INCLUDE,
   });
-  return s ? toAthleteSession(s) : null;
+  return s ? toAthleteSession(athleteId, s) : null;
+}
+
+/** Sesión que el atleta dejó en curso (cualquier fecha), para "Continuar". */
+export async function findInProgressAthleteSession(athleteId: string): Promise<AthleteSessionDTO | null> {
+  const s = await db().scheduledSession.findFirst({
+    where: { assignments: { some: { athleteId, status: "asignada", log: { is: { status: "en_curso" } } } } },
+    include: ATHLETE_INCLUDE,
+    orderBy: ORDER,
+  });
+  return s ? toAthleteSession(athleteId, s) : null;
 }
