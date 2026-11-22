@@ -1,0 +1,75 @@
+// RoxCoach: esquema activo (fase 2: identidad y perfiles).
+// El modelo de dominio completo previsto está en docs/data-model-draft.prisma.
+//
+// Las filas de `profiles` se crean con un trigger sobre `auth.users`
+// (ver prisma/migrations/*_init_profiles). `profiles.id` = `auth.users.id`.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  coach
+  athlete
+
+  @@map("role")
+}
+
+enum WeightUnit {
+  kg
+  lb
+
+  @@map("weight_unit")
+}
+
+enum DistanceUnit {
+  km
+  mi
+
+  @@map("distance_unit")
+}
+
+model Profile {
+  /// Igual a auth.users.id (FK con borrado en cascada, definida en SQL).
+  id        String   @id @db.Uuid
+  email     String
+  name      String
+  role      Role
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  coach   CoachProfile?
+  athlete AthleteProfile?
+
+  @@map("profiles")
+}
+
+model CoachProfile {
+  profileId    String       @id @map("profile_id") @db.Uuid
+  profile      Profile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  gymName      String?      @map("gym_name")
+  weightUnit   WeightUnit   @default(kg) @map("weight_unit")
+  distanceUnit DistanceUnit @default(km) @map("distance_unit")
+  updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("coach_profiles")
+}
+
+model AthleteProfile {
+  profileId     String     @id @map("profile_id") @db.Uuid
+  profile       Profile    @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  /// División HYROX (validada en la app; ver lib/validations).
+  division      String?
+  raceDate      DateTime?  @map("race_date") @db.Date
+  availableDays String[]   @default([]) @map("available_days")
+  equipment     String[]   @default([])
+  weightUnit    WeightUnit @default(kg) @map("weight_unit")
+  updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("athlete_profiles")
+}

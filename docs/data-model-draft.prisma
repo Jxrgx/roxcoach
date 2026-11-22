@@ -1,0 +1,191 @@
+// REFERENCIA DE FASES FUTURAS — RoxCoach
+// Modelo de dominio completo previsto. NO lo usa Prisma: el esquema activo es
+// prisma/schema.prisma (solo identidad y perfiles en la fase 2). Los modelos de
+// este archivo se moverán al esquema activo en los módulos correspondientes.
+// Separación obligatoria del dominio (CLAUDE.md):
+//   Exercise → WorkoutTemplate → ScheduledSession → Assignment → SessionLog/SetLog
+// Lo planeado nunca se sobrescribe con lo realizado.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  COACH
+  ATHLETE
+}
+
+enum Intensity {
+  BAJA
+  MEDIA
+  ALTA
+}
+
+enum TemplateStatus {
+  BORRADOR
+  PUBLICADA
+  ARCHIVADA
+}
+
+enum AssignmentStatus {
+  PROGRAMADA
+  EN_CURSO
+  COMPLETADA
+  OMITIDA
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      Role
+  createdAt DateTime @default(now())
+
+  coachProfile   CoachProfile?
+  athleteProfile AthleteProfile?
+}
+
+model CoachProfile {
+  id           String  @id @default(cuid())
+  userId       String  @unique
+  user         User    @relation(fields: [userId], references: [id])
+  gymName      String
+  weightUnit   String  @default("kg")
+  distanceUnit String  @default("km")
+
+  athletes  AthleteProfile[]
+  exercises Exercise[]
+  templates WorkoutTemplate[]
+  sessions  ScheduledSession[]
+}
+
+model AthleteProfile {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id])
+  coachId        String?
+  coach          CoachProfile? @relation(fields: [coachId], references: [id])
+  division       String
+  raceDate       DateTime?
+  availableDays  String[]
+  equipment      String[]
+
+  assignments Assignment[]
+}
+
+model Exercise {
+  id            String   @id @default(cuid())
+  coachId       String?
+  coach         CoachProfile? @relation(fields: [coachId], references: [id])
+  name          String
+  category      String
+  equipment     String[]
+  videoUrl      String?
+  cue           String?
+  createdAt     DateTime @default(now())
+
+  blockItems BlockExercise[]
+}
+
+model WorkoutTemplate {
+  id              String         @id @default(cuid())
+  coachId         String
+  coach           CoachProfile   @relation(fields: [coachId], references: [id])
+  name            String
+  focus           String?
+  durationMinutes Int
+  intensity       Intensity
+  status          TemplateStatus @default(BORRADOR)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  blocks   WorkoutBlock[]
+  sessions ScheduledSession[]
+}
+
+model WorkoutBlock {
+  id         String          @id @default(cuid())
+  templateId String
+  template   WorkoutTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  order      Int
+  name       String
+  summary    String?
+
+  exercises BlockExercise[]
+}
+
+/// Prescripción planeada (objetivos). Nunca guarda resultados reales.
+model BlockExercise {
+  id              String       @id @default(cuid())
+  blockId         String
+  block           WorkoutBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  exerciseId      String
+  exercise        Exercise     @relation(fields: [exerciseId], references: [id])
+  order           Int
+  sets            Int
+  reps            Int?
+  distanceMeters  Float?
+  loadKg          Float?
+  durationSeconds Int?
+  restSeconds     Int?
+}
+
+/// Copia programada de una plantilla en una fecha. Editarla no altera la plantilla.
+model ScheduledSession {
+  id          String          @id @default(cuid())
+  coachId     String
+  coach       CoachProfile    @relation(fields: [coachId], references: [id])
+  templateId  String?
+  template    WorkoutTemplate? @relation(fields: [templateId], references: [id])
+  name        String
+  scheduledAt DateTime
+  snapshot    Json            // bloques y prescripción congelados al programar
+
+  assignments Assignment[]
+}
+
+/// Sesión asignada a un atleta; permite personalizar sin afectar a otros.
+model Assignment {
+  id          String           @id @default(cuid())
+  sessionId   String
+  session     ScheduledSession @relation(fields: [sessionId], references: [id])
+  athleteId   String
+  athlete     AthleteProfile   @relation(fields: [athleteId], references: [id])
+  status      AssignmentStatus @default(PROGRAMADA)
+  overrides   Json?            // ajustes individuales sobre el snapshot
+
+  log SessionLog?
+
+  @@unique([sessionId, athleteId])
+}
+
+/// Registro realizado (resultados reales).
+model SessionLog {
+  id           String     @id @default(cuid())
+  assignmentId String     @unique
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  startedAt    DateTime
+  finishedAt   DateTime?
+  comment      String?
+
+  sets SetLog[]
+}
+
+model SetLog {
+  id                    String     @id @default(cuid())
+  sessionLogId          String
+  sessionLog            SessionLog @relation(fields: [sessionLogId], references: [id], onDelete: Cascade)
+  blockExerciseId       String     // referencia a lo planeado, sin modificarlo
+  setNumber             Int
+  actualReps            Int?
+  actualDistanceMeters  Float?
+  actualLoadKg          Float?
+  actualDurationSeconds Int?
+  rpe                   Int?
+  createdAt             DateTime   @default(now())
+}

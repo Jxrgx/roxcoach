@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+/*
+ * RoxCoach — tokens visuales centralizados.
+ * Toda la paleta, radios y sombras se definen aquí y se consumen como
+ * utilidades de Tailwind (bg-surface, text-muted, border-line, etc.).
+ * No usar valores hexadecimales sueltos en componentes.
+ */
+@theme {
+  /* Superficies */
+  --color-bg: #0b0d0f;
+  --color-surface: #15191d;
+  --color-surface-2: #20262b;
+  --color-line: #2c3338;
+
+  /* Texto */
+  --color-ink: #f5f5f0;
+  --color-muted: #9ba3a8;
+
+  /* Acento principal: solo acción principal, progreso activo y marcas */
+  --color-acid: #d7f500;
+  --color-acid-strong: #c4e000;
+  --color-on-acid: #0b0d0f;
+
+  /* Estados y apoyo */
+  --color-electric: #4d8dff;
+  --color-positive: #a8e063;
+  --color-warning: #f2b84b;
+  --color-danger: #ff6b6b;
+
+  /* Tipografía */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* Radios consistentes: controles = xl (12px), tarjetas = 2xl (16px) */
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+
+  /* Sombras discretas */
+  --shadow-card: 0 1px 0 0 rgb(255 255 255 / 0.03) inset, 0 8px 24px -12px rgb(0 0 0 / 0.6);
+  --shadow-overlay: 0 24px 64px -16px rgb(0 0 0 / 0.8);
+
+  /* Alturas de navegación (para reservar espacio y evitar solapes) */
+  --spacing-bottom-nav: 4.5rem;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    /* Evita scroll horizontal accidental sin ocultar contenido vertical. */
+    overflow-x: clip;
+  }
+
+  /* Foco visible y consistente para navegación por teclado. */
+  :focus-visible {
+    outline: 2px solid var(--color-electric);
+    outline-offset: 2px;
+    border-radius: 0.375rem;
+  }
+
+  ::selection {
+    background-color: var(--color-acid);
+    color: var(--color-on-acid);
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  dialog::backdrop {
+    background: rgb(5 6 7 / 0.72);
+    backdrop-filter: blur(2px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@utility safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility tap-target {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
