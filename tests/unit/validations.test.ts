@@ -3,7 +3,7 @@ import {
   hasErrors,
   validateCoachSettings,
   validateLogin,
-  validateNewSession,
+  validateSchedule,
   validateRegister,
   validateSetResult,
 } from "@/lib/validations";
@@ -61,9 +61,10 @@ describe("formularios del coach", () => {
     expect(validateCoachSettings({ name: " ", gym: "" }).gym).toBeDefined();
   });
 
-  it("valida nueva sesión", () => {
-    const e = validateNewSession({ name: "ab", templateId: "", date: "" });
-    expect(Object.keys(e).sort()).toEqual(["date", "name", "templateId"]);
+  it("valida la programación de una sesión", () => {
+    const opts = { today: "2026-11-24", maxDate: "2027-11-25" };
+    const e = validateSchedule({ templateId: "", date: "2026-11-23", time: "25:00", title: "x", notes: "", athleteIds: [] }, opts);
+    expect(Object.keys(e).sort()).toEqual(["athleteIds", "date", "templateId", "time", "title"]);
   });
 });
 

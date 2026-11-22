@@ -55,7 +55,7 @@ El proxy usa `app_metadata.role` del JWT para redirigir sin consultar la BD. La 
 
 ## Datos
 
-- **Esquema activo** (`prisma/schema.prisma`): `profiles`, `coach_profiles` y `athlete_profiles`. `profiles.id` es el mismo id de `auth.users` (FK con cascada).
+- **Esquema activo** (`prisma/schema.prisma`): perfiles (`profiles`, `coach_profiles`, `athlete_profiles`), relación coach–atleta e invitaciones, ejercicios, plantillas y, desde la fase 6, `scheduled_sessions` y `assignments`. `profiles.id` es el mismo id de `auth.users` (FK con cascada).
 - **Modelo completo previsto:** está en `docs/data-model-draft.prisma` y se incorporará módulo por módulo.
 - **Conexiones:** Prisma 7 usa el driver adapter `@prisma/adapter-pg`. La app se conecta por el pooler (`DATABASE_URL`) y las migraciones por la conexión directa (`DIRECT_URL`, en `prisma.config.ts`).
 - **Migraciones:**
@@ -182,6 +182,33 @@ Un ejercicio ajeno, inexistente o un id inválido muestra el mismo "no está en 
   - Errores por ruta de campo, aviso al salir con cambios sin guardar, y vista previa en un modal antes de guardar.
 - **Detalle** (`[id]`): la vista previa como la verá el atleta (`TemplatePreview`) y acciones según el estado, con una sola principal.
 - **Lista:** buscador y filtro por estado.
+
+## Programación y asignación (fase 6)
+
+Sigue la cadena del dominio: **plantilla → sesión programada → asignación al atleta** (el registro realizado llegará con la ejecución).
+
+**Modelo** (migraciones `add_scheduled_sessions` y `fix_snapshot_check`):
+- **`scheduled_sessions`:** coach (cascada), plantilla de origen (opcional, `SET NULL` si se borra), título, notas, `scheduled_date` (`DATE`), `start_time` opcional (`"HH:MM"`), estado (`programada` o `cancelada`, con `cancelled_at`) y `snapshot` (JSON).
+- **`assignments`:** sesión (cascada) y atleta (cascada), estado `asignada` o `retirada`, única por `(session_id, athlete_id)`. Quitar a un atleta lo marca `retirada` (no se borra); volver a agregarlo lo reactiva.
+- **Restricciones en la BD:** título 2–80, notas ≤ 500, formato de hora, `cancelada` ⇔ `cancelled_at` no nulo, y el snapshot debe ser un objeto con `version` numérica y `blocks` arreglo (`coalesce` para que una clave ausente no pase el CHECK).
+- **Trigger** `check_assignment_relation`: una asignación `asignada` exige una relación **activa** coach–atleta (los atletas en pausa no se asignan).
+- **RLS:** activo y sin políticas en ambas tablas.
+
+**Snapshot** (`lib/scheduling/snapshot.ts`):
+- Al programar se copia la plantilla publicada (nombre, enfoque, intensidad, duración, bloques y ejercicios con nombre, categoría, equipo y prescripción) con `version: 1`.
+- Editar, archivar o borrar la plantilla después **no** cambia la sesión. Editar la sesión solo cambia fecha, hora, título y notas.
+- Lo que viene de la BD se valida en tiempo de ejecución (`parseSnapshot`); si no es válido se muestra vacío en vez de romper la página.
+
+**Fechas** (`lib/scheduling/dates.ts`): las fechas viajan como claves `YYYY-MM-DD` y "hoy" se calcula en `APP_TIME_ZONE` (`America/Mexico_City`), así una sesión no cambia de día por la zona del servidor. Se programa de hoy a un año. El calendario y la agenda reciben `?semana=` y lo ajustan al lunes (`resolveWeekParam`).
+
+**Permisos y reglas** (`lib/db/sessions.ts`, `app/coach/sesiones/actions.ts`, `validateSchedule` y `validateSessionDetails`):
+- El coach solo programa sus plantillas publicadas para sus atletas activos (1–50, sin repetidos); se revisa en la transacción y en el trigger.
+- Solo una sesión `programada` se edita, se cancela o cambia de atletas. Cancelar pide confirmación y conserva la sesión y sus asignaciones.
+- El atleta solo ve sesiones con una asignación `asignada` para él; las canceladas aparecen en su agenda marcadas como tales, no en "próximas". Una sesión ajena responde 404.
+
+**Interfaz:**
+- **Coach:** `/coach/sesiones/nueva` (plantilla, fecha y hora, título y notas, atletas; acción fija "Programar sesión"), `/coach/sesiones/[id]` (vista previa del snapshot, Editar detalles, Cancelar, atletas asignados), Calendario semanal y sesiones de hoy en Inicio. "Programar" es la acción principal del detalle de una plantilla publicada.
+- **Atleta:** sesión de hoy y próximas en Inicio, Agenda semanal (tira de 7 días + lista; una semana vacía muestra un solo estado vacío), Entrenamiento (la de hoy o la siguiente) y `/atleta/sesiones/[id]` con bloques en acordeón (nivel 3) y "Comenzar" como acción principal (llegará con la ejecución).
 
 ## Estados de pantalla
 

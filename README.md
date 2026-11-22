@@ -5,10 +5,10 @@ Plataforma web/PWA en español para coaches y atletas de **HYROX**. Reemplaza pi
 - **Panel del coach** (`/coach/*`): pensado para desktop y tablet.
 - **App del atleta** (`/atleta/*`): pensada para mobile y uso con una mano.
 
-> **Estado actual: fase 5.**
-> - **Ya funciona:** autenticación real (Supabase), roles coach/atleta, rutas protegidas, perfiles en PostgreSQL (Prisma) **gestión de atletas con invitaciones** (relación coach–atleta) , **biblioteca de ejercicios** y **constructor de plantillas**.
-> - **Datos reales:** Entrenamientos (plantillas por bloques con ejercicios de la biblioteca: crear, editar, reordenar, vista previa, borrador/publicar, duplicar, archivar y restaurar), Biblioteca (ejercicios de RoxCoach y personalizados: buscar, filtrar, crear, editar, duplicar, archivar y restaurar, con medios por URL y sustituciones), detalle de ejercicio para el atleta, Atletas (lista, detalle, invitaciones, pausar y reactivar), invitación pública `/invitacion/[token]`, Configuración del coach, Perfil del atleta (con su coach) y los saludos.
-> - **Todavía con datos ficticios:** sesiones programadas, calendario, progreso y mensajes.
+> **Estado actual: fase 6.**
+> - **Ya funciona:** autenticación real (Supabase), roles coach/atleta, rutas protegidas, perfiles en PostgreSQL (Prisma), **gestión de atletas con invitaciones** (relación coach–atleta), **biblioteca de ejercicios**, **constructor de plantillas** y **programación y asignación de sesiones**.
+> - **Datos reales:** Programación (programar una plantilla publicada para varios atletas activos con snapshot congelado; editar detalles, cancelar, agregar y quitar atletas), Calendario semanal del coach, sesiones de hoy en Inicio, Agenda, Inicio, Entrenamiento y detalle de sesión del atleta, Entrenamientos (plantillas por bloques con ejercicios de la biblioteca: crear, editar, reordenar, vista previa, borrador/publicar, duplicar, archivar y restaurar), Biblioteca (ejercicios de RoxCoach y personalizados: buscar, filtrar, crear, editar, duplicar, archivar y restaurar, con medios por URL y sustituciones), detalle de ejercicio para el atleta, Atletas (lista, detalle, invitaciones, pausar y reactivar), invitación pública `/invitacion/[token]`, Configuración del coach, Perfil del atleta (con su coach) y los saludos.
+> - **Todavía con datos ficticios:** progreso, mensajes y los indicadores secundarios del Inicio del coach. La ejecución del entrenamiento ("Comenzar") llega en el siguiente módulo.
 
 Las reglas permanentes de desarrollo, diseño y UX están en [CLAUDE.md](CLAUDE.md).
 
@@ -86,10 +86,11 @@ components/
 lib/
   supabase/          Clientes de navegador/servidor y refresco de sesión
   auth/              Sesión (DAL), Server Actions de acceso y mensajes de error
-  db/                Prisma: perfiles, atletas, invitaciones, ejercicios y plantillas
+  db/                Prisma: perfiles, atletas, invitaciones, ejercicios, plantillas y sesiones
   invitations/       Tokens y reglas de invitación (funciones puras)
   exercises/         Catálogos, permisos, sustituciones y filtros de la biblioteca (funciones puras)
   workouts/          Plantillas: unidades, prescripciones, conversión y reglas de publicación (puras)
+  scheduling/        Fechas de calendario en la zona de la app, ?semana= y snapshot de sesiones (puras)
   athletes/          Filtros puros de la lista de atletas
   permissions/       Roles, acceso por ruta y destinos seguros
   validations/       Validaciones puras (cliente y servidor)

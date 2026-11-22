@@ -11,6 +11,11 @@
 //                   (implementadas; el esquema real usa target_type con un solo
 //                   objetivo por ejercicio, carga en kg, estimated_minutes y la
 //                   FK al ejercicio diferida — ver prisma/schema.prisma).
+//   [FASE 6]        programación: ScheduledSession y Assignment (implementadas;
+//                   el esquema real separa scheduled_date (DATE) y start_time
+//                   ("HH:MM" opcional), usa estados programada/cancelada en la
+//                   sesión y asignada/retirada en la asignación, y aún no tiene
+//                   overrides — ver prisma/schema.prisma).
 //   [FUTURO]        diseño previsto; puede cambiar al implementarse.
 //
 // Separación obligatoria del dominio (CLAUDE.md):
@@ -184,6 +189,9 @@ enum TemplateStatus {
   archivada
 }
 
+// [FUTURO] Estado de ejecución del atleta. En la fase 6 la asignación solo
+// tiene asignada/retirada; el progreso de la ejecución se modelará con SessionLog
+// o con estos valores al implementar la ejecución.
 enum AssignmentStatus {
   programada
   en_curso
@@ -228,6 +236,7 @@ model BlockExercise {
   restSeconds     Int?
 }
 
+/// [FASE 6 — implementado; ver prisma/schema.prisma para los campos reales]
 /// Copia programada de una plantilla en una fecha. Editarla no altera la plantilla.
 model ScheduledSession {
   id          String   @id @db.Uuid
@@ -240,6 +249,7 @@ model ScheduledSession {
   assignments Assignment[]
 }
 
+/// [FASE 6 — implementado sin overrides; personalizar por atleta queda pendiente]
 /// Sesión asignada a un atleta; permite personalizar sin afectar a otros.
 model Assignment {
   id        String           @id @db.Uuid
@@ -253,7 +263,7 @@ model Assignment {
   @@unique([sessionId, athleteId])
 }
 
-/// Registro realizado (resultados reales).
+/// [FUTURO] Registro realizado (resultados reales).
 model SessionLog {
   id           String    @id @db.Uuid
   assignmentId String    @unique @db.Uuid

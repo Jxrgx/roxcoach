@@ -14,6 +14,7 @@ const ROUTES = [
   "/registro",
   "/coach/inicio",
   "/coach/calendario",
+  "/coach/sesiones/nueva",
   "/coach/atletas",
   // Detalle del atleta de prueba vinculado en el setup (id resuelto al ejecutar).
   "/coach/atletas/:atleta",
@@ -119,23 +120,13 @@ test.describe("estados de pantalla (360px)", () => {
 test.describe("diálogos en mobile (360px)", () => {
   test.use({ viewport: { width: 360, height: 780 }, storageState: COACH_STATE });
 
-  test("Nueva sesión: valida, guarda y confirma", async ({ page }) => {
+  test("Nueva sesión lleva al flujo real de programación", async ({ page }) => {
+    // Antes era un modal de vista previa; desde la fase 6 es el formulario real.
     await page.goto("/coach/inicio", { waitUntil: "networkidle" });
-    await page.getByRole("main").getByRole("button", { name: "Nueva sesión" }).first().click();
-    const dialog = page.getByRole("dialog", { name: "Nueva sesión" });
-    await expect(dialog).toBeVisible();
-    const box = await dialog.boundingBox();
-    expect(box && box.x >= 0 && box.x + box.width <= 360).toBeTruthy();
-
-    await dialog.getByRole("button", { name: "Crear sesión" }).click();
-    await expect(dialog.getByText("Dale un nombre a la sesión")).toBeVisible();
-
-    await dialog.getByLabel("Nombre de la sesión").fill("Engine + Sled Push");
-    await dialog.getByLabel("Plantilla").selectOption("tpl-engine-sled");
-    await dialog.getByLabel("Fecha").fill("2026-12-01");
-    await dialog.getByRole("button", { name: "Crear sesión" }).click();
-    await expect(page.getByText("Sesión creada")).toBeVisible();
-    await expect(dialog).toBeHidden();
+    await page.getByRole("main").getByRole("link", { name: "Nueva sesión" }).first().click();
+    await expect(page).toHaveURL(/\/coach\/sesiones\/nueva$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Nueva sesión" })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   });
 
   test("Más secciones abre un bottom sheet navegable", async ({ page }) => {

@@ -11,6 +11,7 @@ import {
 } from "@/app/coach/entrenamientos/actions";
 import type { TemplateStatusValue } from "@/lib/workouts/rules";
 import { Button, ButtonLink } from "@/components/ui/button";
+import { NewSessionButton } from "@/components/coach/new-session";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 
@@ -19,7 +20,7 @@ type Result = { ok: true } | { ok: false; message?: string; problems?: string[] 
 /**
  * Acciones del detalle según estado (una sola acción principal):
  * - Borrador: "Publicar" (principal) · Editar · Duplicar · Archivar.
- * - Publicada: "Editar" (principal) · Pasar a borrador · Duplicar · Archivar.
+ * - Publicada: "Programar" (principal) · Editar · Pasar a borrador · Duplicar · Archivar.
  * - Archivada: "Restaurar" (principal, vuelve a borrador).
  */
 export function TemplateActions({ id, name, status }: { id: string; name: string; status: TemplateStatusValue }) {
@@ -94,13 +95,14 @@ export function TemplateActions({ id, name, status }: { id: string; name: string
             )}
             <ButtonLink
               href={`/coach/entrenamientos/${id}/editar`}
-              variant={status === "borrador" ? "secondary" : "primary"}
+              variant="secondary"
               icon={<Pencil aria-hidden className="size-4" />}
               fullWidth
               className="sm:w-auto"
             >
               Editar
             </ButtonLink>
+            {status === "publicada" && <NewSessionButton templateId={id} label="Programar" fullWidth className="sm:w-auto" />}
             {status === "borrador" && (
               <Button
                 onClick={() => run(() => publishTemplateAction(id), "Plantilla publicada")}

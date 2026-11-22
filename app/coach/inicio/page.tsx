@@ -3,13 +3,15 @@ import Link from "next/link";
 import { AlertCircle, MessageSquare } from "lucide-react";
 import { requireCoach } from "@/lib/auth/session";
 import { mockAthletes, mockCoachProgress, mockRecentComments } from "@/lib/mock/coach";
-import { mockCoachSessions } from "@/lib/mock/workouts";
+import { listCoachSessions } from "@/lib/db/sessions";
+import { todayKey } from "@/lib/scheduling/dates";
+import { APP_TIME_ZONE } from "@/lib/utils/format";
 import { PageHeader } from "@/components/shared/page-header";
 import { TodayLabel } from "@/components/shared/today-label";
 import { ScreenStates } from "@/components/shared/screen-states";
 import { Avatar } from "@/components/shared/avatar";
 import { NewSessionButton } from "@/components/coach/new-session";
-import { WorkoutCard } from "@/components/workouts/workout-card";
+import { SessionCard } from "@/components/workouts/session-card";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +21,7 @@ export const metadata: Metadata = { title: "Inicio" };
 export default async function CoachHomePage() {
   const coach = await requireCoach();
   const firstName = coach.name.split(" ")[0];
-  const today = mockCoachSessions.filter((s) => s.dayOffset === 0);
+  const today = await listCoachSessions(coach.id, todayKey(APP_TIME_ZONE), todayKey(APP_TIME_ZONE));
   const pending = mockAthletes.filter((a) => a.status === "pendiente");
   const { done, planned } = mockCoachProgress.completedSessions;
 
@@ -52,21 +54,28 @@ export default async function CoachHomePage() {
                   </Link>
                 }
               />
-              <ul className="flex flex-col gap-3">
-                {today.map((s) => (
-                  <li key={s.id}>
-                    <WorkoutCard
-                      name={s.name}
-                      when={s.time}
-                      durationMinutes={s.durationMinutes}
-                      intensity={s.intensity}
-                      blockCount={s.blockCount}
-                      status={s.status}
-                      athleteCount={s.athleteIds.length}
-                    />
-                  </li>
-                ))}
-              </ul>
+              {today.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-line p-4 text-sm text-muted">No hay sesiones programadas para hoy.</p>
+              ) : (
+                <ul className="flex flex-col gap-3">
+                  {today.map((s) => (
+                    <li key={s.id}>
+                      <SessionCard
+                        href={`/coach/sesiones/${s.id}`}
+                        session={{
+                          title: s.title,
+                          when: s.startTime ?? "Sin hora",
+                          status: s.status,
+                          estimatedMinutes: s.estimatedMinutes,
+                          blockCount: s.blockCount,
+                          intensity: s.intensity,
+                          athleteCount: s.athleteCount,
+                        }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
 
             <section aria-labelledby="pendientes">

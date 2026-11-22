@@ -1,115 +1,119 @@
-"use client";
-
-import { useMemo } from "react";
-import type { ScheduledSession, SessionStatus as Status } from "@/lib/types/domain";
-import { getWeek, type WeekDay } from "@/lib/utils/format";
-import { useToday } from "@/lib/utils/use-today";
+import { CalendarDays } from "lucide-react";
+import type { AthleteSessionDTO } from "@/lib/db/sessions";
+import type { WeekDayKey } from "@/lib/scheduling/dates";
 import { cn } from "@/lib/utils/cn";
-import { LoadingState } from "@/components/ui/loading-state";
-import { SectionHeader } from "@/components/ui/card";
-import { SessionStatus } from "@/components/workouts/session-status";
-import { WorkoutCard } from "@/components/workouts/workout-card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { SessionCard } from "@/components/workouts/session-card";
 
-const DOT: Record<Status, string> = {
-  programada: "bg-muted",
-  en_curso: "bg-acid",
-  completada: "bg-positive",
-  omitida: "bg-danger",
-  descanso: "bg-electric",
-};
-
-const DOT_LABEL: Record<Status, string> = {
-  programada: "programada",
-  en_curso: "en curso",
-  completada: "completada",
-  omitida: "no realizada",
-  descanso: "descanso",
-};
-
-function DayRow({ day, session }: { day: WeekDay; session: ScheduledSession | undefined }) {
-  const label = `${day.isToday ? "Hoy" : day.label} ${day.dayOfMonth}`;
-  if (!session || session.status === "descanso") {
-    return (
-      <div className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-line px-4 py-3">
-        <div>
-          <p className="text-sm text-muted">{label}</p>
-          <p className="font-medium text-ink">Día de descanso</p>
-        </div>
-        <SessionStatus status="descanso" />
-      </div>
-    );
-  }
-  return (
-    <WorkoutCard
-      name={session.name}
-      when={`${label} · ${session.time}`}
-      durationMinutes={session.durationMinutes}
-      intensity={session.intensity}
-      blockCount={session.blockCount}
-      status={day.isToday && session.status === "programada" ? undefined : session.status}
-      href={day.isToday ? "/atleta/sesiones" : undefined}
-      className={day.isToday ? "border-acid/50" : undefined}
-    />
-  );
-}
-
-/** Agenda semanal: tira resumen (no interactiva) + lista por día. */
-export function AgendaWeek({ plan }: { plan: ScheduledSession[] }) {
-  const today = useToday();
-  const week = useMemo(() => (today ? getWeek(today) : []), [today]);
-
-  if (!today) return <LoadingState label="Cargando tu semana…" rows={4} />;
-
-  const sessionFor = (d: WeekDay) => plan.find((s) => s.dayOffset === d.offset);
-  const upcoming = week.filter((d) => d.offset >= 0);
-  const past = week.filter((d) => d.offset < 0);
+/**
+ * Agenda semanal del atleta: tira resumen (no interactiva) + lista por día.
+ * Los días sin sesión se muestran como "Sin sesión" (descanso o libre); si
+ * toda la semana está vacía se muestra un único mensaje en lugar de siete.
+ */
+export function AgendaWeek({
+  days,
+  sessions,
+}: {
+  days: WeekDayKey[];
+  sessions: AthleteSessionDTO[];
+}) {
+  const byDay = (key: string) => sessions.filter((s) => s.date === key);
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <ol aria-label="Resumen de la semana" className="grid grid-cols-7 gap-1">
-        {week.map((d) => {
-          const s = sessionFor(d);
-          const status: Status = s?.status ?? "descanso";
+        {days.map((d) => {
+          const items = byDay(d.key);
+          const scheduled = items.filter(
+            (s) => s.status === "programada",
+          ).length;
           return (
             <li
-              key={d.offset}
+              key={d.key}
               aria-current={d.isToday ? "date" : undefined}
               className={cn(
                 "flex flex-col items-center gap-1 rounded-xl border py-2",
-                d.isToday ? "border-acid/60 bg-surface-2" : "border-transparent",
+                d.isToday
+                  ? "border-acid/60 bg-surface-2"
+                  : "border-transparent",
               )}
             >
-              <span className={cn("text-[11px]", d.isToday ? "font-semibold text-acid" : "text-muted")}>{d.label}</span>
-              <span className="text-base font-bold tabular-nums text-ink">{d.dayOfMonth}</span>
-              <span aria-hidden className={cn("size-1.5 rounded-full", DOT[status])} />
-              <span className="sr-only">{DOT_LABEL[status]}</span>
+              <span
+                className={cn(
+                  "text-[11px]",
+                  d.isToday ? "font-semibold text-acid" : "text-muted",
+                )}
+              >
+                {d.label}
+              </span>
+              <span className="text-base font-bold tabular-nums text-ink">
+                {d.dayOfMonth}
+              </span>
+              <span
+                aria-hidden
+                className={cn(
+                  "size-1.5 rounded-full",
+                  scheduled ? "bg-acid" : "bg-line",
+                )}
+              />
+              <span className="sr-only">
+                {scheduled
+                  ? `${scheduled} ${scheduled === 1 ? "sesión" : "sesiones"}`
+                  : "sin sesión"}
+              </span>
             </li>
           );
         })}
       </ol>
 
-      <section aria-labelledby="proximas">
-        <SectionHeader id="proximas" title="Próximas" />
-        <ul className="flex flex-col gap-3">
-          {upcoming.map((d) => (
-            <li key={d.offset}>
-              <DayRow day={d} session={sessionFor(d)} />
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {past.length > 0 && (
-        <section aria-labelledby="realizadas">
-          <SectionHeader id="realizadas" title="Esta semana" />
-          <ul className="flex flex-col gap-3">
-            {past.map((d) => (
-              <li key={d.offset}>
-                <DayRow day={d} session={sessionFor(d)} />
+      {sessions.length === 0 ? (
+        <EmptyState
+          icon={<CalendarDays />}
+          title="No hay sesiones esta semana"
+          description="Cuando tu coach te asigne entrenamientos para estos días, aparecerán aquí."
+        />
+      ) : (
+        <ol className="flex flex-col gap-3">
+          {days.map((d) => {
+            const items = byDay(d.key);
+            return (
+              <li key={d.key} aria-label={`${d.label} ${d.dayOfMonth}`}>
+                <h3
+                  className={cn(
+                    "mb-2 text-sm font-medium",
+                    d.isToday ? "text-acid" : "text-muted",
+                  )}
+                >
+                  {d.isToday ? "Hoy" : d.label} {d.dayOfMonth}
+                </h3>
+                {items.length === 0 ? (
+                  <p className="rounded-2xl border border-dashed border-line px-4 py-3 text-sm text-muted">
+                    Sin sesión
+                  </p>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {items.map((s) => (
+                      <li key={s.id}>
+                        <SessionCard
+                          href={`/atleta/sesiones/${s.id}`}
+                          highlight={d.isToday && s.status === "programada"}
+                          session={{
+                            title: s.title,
+                            when: s.startTime ?? "Sin hora",
+                            status: s.status,
+                            estimatedMinutes: s.estimatedMinutes,
+                            blockCount: s.blockCount,
+                            intensity: s.intensity,
+                          }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
-            ))}
-          </ul>
-        </section>
+            );
+          })}
+        </ol>
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import { parseDuration } from "@/lib/workouts/rules";
+import { isDateKey } from "@/lib/scheduling/dates";
 
 /**
  * Validaciones centralizadas (funciones puras).
@@ -203,22 +204,6 @@ export function validateInvitation(input: InvitationInput): FieldErrors<keyof In
   return errors;
 }
 
-/* ---------- Nueva sesión (vista previa) ---------- */
-
-export interface NewSessionInput {
-  name: string;
-  templateId: string;
-  date: string;
-}
-
-export function validateNewSession(input: NewSessionInput): FieldErrors<keyof NewSessionInput> {
-  const errors: FieldErrors<keyof NewSessionInput> = {};
-  if (input.name.trim().length < 3) errors.name = "Dale un nombre a la sesión (mínimo 3 caracteres).";
-  if (!input.templateId) errors.templateId = "Elige una plantilla o “Sesión en blanco”.";
-  if (!input.date) errors.date = "Elige la fecha de la sesión.";
-  return errors;
-}
-
 export function hasErrors<T extends string>(errors: FieldErrors<T>): boolean {
   return Object.keys(errors).length > 0;
 }
@@ -392,5 +377,51 @@ export function validateTemplate(input: TemplateInput, opts: { publish: boolean;
       if (ex.notes.trim().length > 140) errors[`${ep}.notes`] = "Usa máximo 140 caracteres.";
     });
   });
+  return errors;
+}
+
+/* ---------- Programación de sesiones ---------- */
+
+export interface SessionDetailsInput {
+  /** "YYYY-MM-DD". */
+  date: string;
+  /** "" o "HH:MM" (24 h). */
+  time: string;
+  title: string;
+  notes: string;
+}
+
+export interface ScheduleInput extends SessionDetailsInput {
+  templateId: string;
+  athleteIds: string[];
+}
+
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+
+/** Fecha, hora, título y notas. `today` y `maxDate` en "YYYY-MM-DD" (zona de la app). */
+export function validateSessionDetails(
+  input: SessionDetailsInput,
+  opts: { today: string; maxDate: string },
+): FieldErrors<keyof SessionDetailsInput> {
+  const errors: FieldErrors<keyof SessionDetailsInput> = {};
+  if (!isDateKey(input.date)) errors.date = "Elige la fecha de la sesión.";
+  else if (input.date < opts.today) errors.date = "La fecha no puede ser anterior a hoy.";
+  else if (input.date > opts.maxDate) errors.date = "Programa con máximo un año de anticipación.";
+  if (input.time.trim() !== "" && !TIME_RE.test(input.time.trim())) errors.time = "Usa el formato de 24 horas (por ejemplo 07:00).";
+  const title = input.title.trim();
+  if (title.length < 2) errors.title = "Escribe el título de la sesión.";
+  else if (title.length > 80) errors.title = "Usa máximo 80 caracteres.";
+  if (input.notes.trim().length > 500) errors.notes = "Usa máximo 500 caracteres.";
+  return errors;
+}
+
+export function validateSchedule(input: ScheduleInput, opts: { today: string; maxDate: string }): FieldErrors<keyof ScheduleInput> {
+  const errors: FieldErrors<keyof ScheduleInput> = validateSessionDetails(input, opts);
+  if (!UUID_PATTERN.test(input.templateId)) errors.templateId = "Elige una plantilla publicada.";
+  if (input.athleteIds.length === 0) errors.athleteIds = "Elige al menos un atleta.";
+  else if (input.athleteIds.length > 50) errors.athleteIds = "Máximo 50 atletas por sesión.";
+  else if (input.athleteIds.some((id) => !UUID_PATTERN.test(id)) || new Set(input.athleteIds).size !== input.athleteIds.length)
+    errors.athleteIds = "Hay atletas no válidos.";
   return errors;
 }

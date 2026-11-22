@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils/cn";
 import { Logo } from "@/components/shared/logo";
 import { OfflineBanner } from "@/components/shared/offline-banner";
 import { BottomSheet } from "@/components/ui/bottom-sheet";
-import { NewSessionButton, NewSessionProvider } from "@/components/coach/new-session";
+import { NewSessionButton } from "@/components/coach/new-session";
 
 const ICONS: Record<string, LucideIcon> = {
   inicio: Home,
@@ -166,7 +166,7 @@ export function CoachShell({
   mobileProfile: ReactNode;
 }) {
   return (
-    <NewSessionProvider>
+    <>
       <a
         href="#contenido"
         className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-xl focus:bg-acid focus:px-4 focus:py-2 focus:font-semibold focus:text-on-acid"
@@ -214,6 +214,6 @@ export function CoachShell({
       <Suspense fallback={<MobileNav pathname="" />}>
         <MobileNavActive />
       </Suspense>
-    </NewSessionProvider>
+    </>
   );
 }

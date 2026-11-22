@@ -28,6 +28,7 @@ export interface TemplateExerciseDTO extends BlockExerciseWrite {
   exerciseName: string;
   category: ExerciseCategoryValue;
   exerciseArchived: boolean;
+  equipment: string[];
 }
 
 export interface TemplateDetailDTO extends Omit<TemplateListItemDTO, "blockCount" | "exerciseCount"> {
@@ -44,7 +45,7 @@ const DETAIL_INCLUDE = {
     include: {
       exercises: {
         orderBy: { position: "asc" },
-        include: { exercise: { select: { name: true, category: true, archivedAt: true } } },
+        include: { exercise: { select: { name: true, category: true, archivedAt: true, equipment: true } } },
       },
     },
   },
@@ -90,6 +91,7 @@ export async function findTemplateForCoach(coachId: string, id: string): Promise
         exerciseName: e.exercise.name,
         category: e.exercise.category,
         exerciseArchived: e.exercise.archivedAt !== null,
+        equipment: e.exercise.equipment,
         sets: e.sets,
         targetType: e.targetType as TargetTypeValue,
         reps: e.reps,

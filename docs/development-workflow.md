@@ -104,3 +104,9 @@ Después de cada pantalla, revísala en 360, 390, tablet y desktop. Confirma que
 - **Copia oculta de `ScreenStates`:** su `<Suspense>` usa el contenido como fallback, y puede quedar una copia oculta en el DOM.
   - En pruebas, usa `getByRole`.
   - En componentes con estado local dentro de `ScreenStates`, no dependas de ese estado para mostrar resultados importantes: usa el toast global o datos del servidor (ver `TemplateActions`).
+- **Datos de prueba de la fase 6** (`scheduling.spec.ts`):
+  - Inserta plantillas publicadas `E2E …` en la BD, programa por la interfaz y registra lo creado con `track()` y `createUser()`.
+  - La limpieza va en `test.afterEach`, que también corre si la prueba agota el tiempo; un `finally` no corre en ese caso y deja residuos. Borra sesiones y plantillas por su prefijo único y los usuarios creados por id.
+  - `actionTimeout` de 15 s y `expect` configurado a 15 s: con workers en paralelo el servidor tarda más en responder.
+- **`browser.newContext()` hereda el `storageState` del `test.use()`:** para iniciar sesión con otro usuario dentro de un describe con sesión, pasa `storageState: { cookies: [], origins: [] }`. Si no, `/login` redirige al área del usuario heredado.
+- **Hidratación y formularios:** escribir en un campo controlado antes de que React hidrate se pierde, y el estado inicial (por ejemplo, fecha = hoy) lo reemplaza. Entra a los formularios con `waitUntil: "networkidle"` y confirma los valores con `toHaveValue` antes de enviar. Por la misma razón, los `<details>` se abren con reintento (ver `openBlock`).

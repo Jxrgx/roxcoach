@@ -1,5 +1,5 @@
-// RoxCoach: esquema activo (fase 5: identidad, perfiles, relación coach–atleta,
-// invitaciones, biblioteca de ejercicios y plantillas de entrenamiento).
+// RoxCoach: esquema activo (fase 6: identidad, perfiles, relación coach–atleta,
+// invitaciones, biblioteca, plantillas, sesiones programadas y asignaciones).
 // El modelo de dominio completo previsto está en docs/data-model-draft.prisma.
 //
 // Las filas de `profiles` se crean con un trigger sobre `auth.users`
@@ -62,6 +62,7 @@ model CoachProfile {
   invitations Invitation[]
   exercises   Exercise[]
   templates   WorkoutTemplate[]
+  sessions    ScheduledSession[]
 
   @@map("coach_profiles")
 }
@@ -79,6 +80,7 @@ model AthleteProfile {
 
   coaches             CoachAthlete[]
   acceptedInvitations Invitation[]
+  assignments         Assignment[]
 
   @@map("athlete_profiles")
 }
@@ -261,7 +263,8 @@ model WorkoutTemplate {
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  blocks WorkoutBlock[]
+  blocks   WorkoutBlock[]
+  sessions ScheduledSession[]
 
   @@index([coachId, status])
   @@map("workout_templates")
@@ -304,4 +307,65 @@ model BlockExercise {
   @@index([blockId, position])
   @@index([exerciseId])
   @@map("block_exercises")
+}
+
+enum ScheduledSessionStatus {
+  programada
+  cancelada
+
+  @@map("scheduled_session_status")
+}
+
+/// Estado de la asignación de una sesión a un atleta. "retirada" = el coach lo
+/// quitó (se conserva el historial). La fase de ejecución agregará más estados.
+enum AssignmentStatus {
+  asignada
+  retirada
+
+  @@map("assignment_status")
+}
+
+/// Sesión concreta programada por el coach a partir de una plantilla PUBLICADA.
+/// snapshot = copia congelada de la plantilla al programar (JSON versionado):
+/// editar o archivar la plantilla después no cambia la sesión.
+model ScheduledSession {
+  id            String                 @id @default(uuid()) @db.Uuid
+  coachId       String                 @map("coach_id") @db.Uuid
+  coach         CoachProfile           @relation(fields: [coachId], references: [profileId], onDelete: Cascade)
+  /// Plantilla de origen (referencia informativa; la fuente de verdad es snapshot).
+  templateId    String?                @map("template_id") @db.Uuid
+  template      WorkoutTemplate?       @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  title         String
+  notes         String?
+  /// Día de la sesión (sin hora ni zona horaria).
+  scheduledDate DateTime               @map("scheduled_date") @db.Date
+  /// Hora de inicio opcional "HH:MM" (hora local del gimnasio).
+  startTime     String?                @map("start_time")
+  status        ScheduledSessionStatus @default(programada)
+  cancelledAt   DateTime?              @map("cancelled_at") @db.Timestamptz(6)
+  snapshot      Json
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  assignments Assignment[]
+
+  @@index([coachId, scheduledDate])
+  @@map("scheduled_sessions")
+}
+
+/// Sesión asignada a un atleta. Al asignar, el atleta debe tener una relación
+/// ACTIVA con el coach de la sesión (trigger en SQL).
+model Assignment {
+  id        String           @id @default(uuid()) @db.Uuid
+  sessionId String           @map("session_id") @db.Uuid
+  session   ScheduledSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  athleteId String           @map("athlete_id") @db.Uuid
+  athlete   AthleteProfile   @relation(fields: [athleteId], references: [profileId], onDelete: Cascade)
+  status    AssignmentStatus @default(asignada)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([sessionId, athleteId])
+  @@index([athleteId, status])
+  @@map("assignments")
 }
