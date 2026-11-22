@@ -22,6 +22,7 @@ const ROUTES = [
   // Ejercicio del sistema (id fijo de la migración add_exercises).
   "/coach/biblioteca/:sistema",
   "/coach/entrenamientos",
+  "/coach/entrenamientos/nueva",
   "/coach/progreso",
   "/coach/mensajes",
   "/coach/configuracion",
@@ -88,7 +89,7 @@ test.describe("estados de pantalla (360px)", () => {
   test.use({ viewport: { width: 360, height: 780 } });
 
   // Pantallas con datos dinámicos (los formularios de alta no muestran estados de lista).
-  const DATA_ROUTES = ROUTES.filter((r) => (r.startsWith("/coach/") || r.startsWith("/atleta/")) && !r.endsWith("/nuevo"));
+  const DATA_ROUTES = ROUTES.filter((r) => (r.startsWith("/coach/") || r.startsWith("/atleta/")) && !r.endsWith("/nuevo") && !r.endsWith("/nueva"));
   const STATES: Array<[string, RegExp]> = [
     ["cargando", /Cargando/],
     ["vacio", /./],

@@ -137,3 +137,12 @@ export async function truncatedNavLabels(page: Page) {
 export async function horizontalOverflow(page: Page): Promise<number> {
   return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
 }
+
+/**
+ * Solo elementos visibles: con Cache Components la pantalla anterior queda
+ * oculta en el DOM (<Activity>) tras navegar con un enlace, y sus controles
+ * homónimos (p. ej. "Dificultad" de la biblioteca) también coincidirían.
+ */
+export function field(page: Page, label: string | RegExp, exact = true) {
+  return page.getByLabel(label, typeof label === "string" ? { exact } : undefined).filter({ visible: true });
+}

@@ -1,6 +1,6 @@
 # Módulos
 
-## Estado actual (fase 4)
+## Estado actual (fase 5)
 
 | Módulo | Estado | Notas |
 | --- | --- | --- |
@@ -14,6 +14,7 @@
 | Perfiles | ✅ Validado con Supabase | Configuración del coach y Perfil del atleta leen y guardan datos reales; saludos con el nombre real |
 | Gestión de atletas e invitaciones | ✅ Validada con Supabase | Lista real con buscador y filtros, invitación por enlace ligada a un correo (copiar, regenerar, cancelar, vence en 7 días), aceptación con registro o login, detalle del atleta, pausar y reactivar, edición deportiva por el coach. Un coach activo por atleta |
 | Biblioteca de ejercicios | ✅ Validada con Supabase | 14 ejercicios de RoxCoach (migración) + personalizados del coach. Buscar, filtrar (categoría, dificultad, origen), detalle, crear, editar, duplicar como propio, archivar y restaurar. Instrucciones, indicación clave, equipo, dificultad, medio por URL (https; los videos se abren como enlace externo) y hasta 5 sustituciones ordenadas. Detalle de solo lectura para el atleta (`/atleta/ejercicios/[id]`) |
+| Constructor de plantillas | ✅ Validado con Supabase | Plantillas del coach por bloques con ejercicios de la biblioteca: series, objetivo (repeticiones, distancia en m o tiempo), carga en la unidad del coach, descanso y nota. Reordenar con botones, vista previa, borrador/publicada (publicar exige duración y ejercicios en cada bloque), duplicar, archivar y restaurar |
 | PWA | 🟡 Preparada | Manifest e icono; sin service worker |
 | Base de datos | 🟡 Inicial | Prisma 7 + PostgreSQL: solo identidad y perfiles. Resto del modelo en `docs/data-model-draft.prisma` |
 
@@ -21,10 +22,10 @@
 
 | Acción | Comportamiento actual |
 | --- | --- |
-| Nueva sesión | Formulario corto con validación; simula el guardado y muestra un toast. No persiste. |
+| Nueva sesión | Formulario corto con validación; simula el guardado y muestra un toast. No persiste (sus plantillas siguen siendo de ejemplo hasta el módulo de programación). |
 | Mensajes | Agregan el mensaje localmente. No se envía. |
 | Eliminar cuenta | Pide confirmación y avisa que aún no está disponible. No elimina nada. |
-| Crear entrenamiento, Nuevo mensaje, Comenzar (atleta) | Abren un aviso que indica qué hará la acción y en qué módulo llegará. |
+| Nuevo mensaje, Comenzar (atleta) | Abren un aviso que indica qué hará la acción y en qué módulo llegará. |
 
 ## Módulos planeados para el MVP
 
@@ -34,7 +35,7 @@ Orden sugerido según la prioridad de uso:
 2. ~~Capa inicial de datos y perfiles~~: completado en la fase 2.
 2b. ~~Gestión de atletas e invitaciones~~: completado en la fase 3. Queda para después: desvincular (`removed`), envío de la invitación por correo desde la app e historial de invitaciones.
 3. ~~Biblioteca de ejercicios~~: completado en la fase 4. Para después: subida de archivos (Storage), categorías propias del coach y enlace del atleta desde sus sesiones.
-4. **Constructor de entrenamientos.** Plantillas por bloques.
+4. ~~Constructor de entrenamientos~~: completado en la fase 5. Para después: arrastrar y soltar, superseries/rondas por bloque y estimación automática de duración.
 5. **Programación y asignación.** Calendario, asignar a varios atletas y personalizar a uno sin afectar a los demás.
 6. **Ejecución del atleta.** Bloque y serie activa, Timer, SetLogger, pausa y finalización con una mano.
 7. **Resultados y progreso.** Registro realizado, adherencia, marcas personales y evolución por estación.

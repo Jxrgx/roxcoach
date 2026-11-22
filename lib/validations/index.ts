@@ -1,3 +1,5 @@
+import { parseDuration } from "@/lib/workouts/rules";
+
 /**
  * Validaciones centralizadas (funciones puras).
  * Se usan en cliente para feedback inmediato y deberán reutilizarse en el
@@ -279,5 +281,116 @@ export function validateExercise(input: ExerciseInput): FieldErrors<keyof Exerci
   if (input.substituteIds.length > 5) errors.substituteIds = "Elige como máximo 5 sustituciones.";
   else if (input.substituteIds.some((id) => !UUID_PATTERN.test(id)) || new Set(input.substituteIds).size !== input.substituteIds.length)
     errors.substituteIds = "Hay sustituciones no válidas.";
+  return errors;
+}
+
+/* ---------- Plantillas de entrenamiento ---------- */
+
+export interface BlockExerciseInput {
+  /** Clave local estable para React (no se guarda). */
+  key: string;
+  exerciseId: string;
+  sets: string;
+  targetType: string;
+  /** Repeticiones, metros o "mm:ss" según targetType. */
+  target: string;
+  /** En la unidad del coach (kg o lb); vacío = sin carga. */
+  load: string;
+  /** Segundos o "mm:ss"; vacío = sin descanso indicado. */
+  rest: string;
+  notes: string;
+}
+
+export interface BlockInput {
+  key: string;
+  name: string;
+  notes: string;
+  exercises: BlockExerciseInput[];
+}
+
+export interface TemplateInput {
+  name: string;
+  focus: string;
+  intensity: string;
+  /** Minutos; vacío permitido solo en borrador. */
+  estimatedMinutes: string;
+  blocks: BlockInput[];
+}
+
+/** Errores por ruta: "name", "blocks.0.name", "blocks.0.exercises.1.target"… */
+export type TemplateErrors = Record<string, string>;
+
+function parseIntStrict(raw: string): number | null {
+  const v = raw.trim();
+  return /^\d+$/.test(v) ? Number(v) : null;
+}
+
+function parseDecimal(raw: string): number | null {
+  const v = raw.trim().replace(",", ".");
+  return /^\d+(\.\d+)?$/.test(v) ? Number(v) : null;
+}
+
+/**
+ * Valida la plantilla. Un borrador solo exige nombre válido y que lo que sí
+ * se capturó sea correcto; para publicar además debe estar completa.
+ */
+export function validateTemplate(input: TemplateInput, opts: { publish: boolean; weightUnit: "kg" | "lb" }): TemplateErrors {
+  const errors: TemplateErrors = {};
+  const name = input.name.trim();
+  if (name.length < 2) errors.name = "Escribe el nombre de la plantilla.";
+  else if (name.length > 80) errors.name = "Usa máximo 80 caracteres.";
+  if (input.focus.trim().length > 140) errors.focus = "Usa máximo 140 caracteres.";
+  if (!["baja", "media", "alta"].includes(input.intensity)) errors.intensity = "Elige la intensidad.";
+
+  if (input.estimatedMinutes.trim() === "") {
+    if (opts.publish) errors.estimatedMinutes = "Indica la duración estimada para publicar.";
+  } else {
+    const minutes = parseIntStrict(input.estimatedMinutes);
+    if (minutes === null || minutes < 5 || minutes > 300) errors.estimatedMinutes = "Entre 5 y 300 minutos.";
+  }
+
+  if (input.blocks.length > 20) errors.blocks = "Máximo 20 bloques.";
+  if (opts.publish && input.blocks.length === 0) errors.blocks = "Agrega al menos un bloque para publicar.";
+
+  const maxLoad = opts.weightUnit === "lb" ? 1100 : 500;
+  input.blocks.forEach((block, b) => {
+    const bp = `blocks.${b}`;
+    const blockName = block.name.trim();
+    if (blockName.length < 1) errors[`${bp}.name`] = "Ponle nombre al bloque.";
+    else if (blockName.length > 60) errors[`${bp}.name`] = "Usa máximo 60 caracteres.";
+    if (block.notes.trim().length > 280) errors[`${bp}.notes`] = "Usa máximo 280 caracteres.";
+    if (block.exercises.length > 30) errors[`${bp}.exercises`] = "Máximo 30 ejercicios por bloque.";
+    if (opts.publish && block.exercises.length === 0) errors[`${bp}.exercises`] = "Agrega al menos un ejercicio a este bloque para publicar.";
+
+    block.exercises.forEach((ex, e) => {
+      const ep = `${bp}.exercises.${e}`;
+      if (!UUID_PATTERN.test(ex.exerciseId)) errors[`${ep}.exerciseId`] = "Elige un ejercicio válido.";
+      const sets = parseIntStrict(ex.sets);
+      if (sets === null || sets < 1 || sets > 50) errors[`${ep}.sets`] = "Entre 1 y 50 series.";
+
+      if (ex.targetType === "reps") {
+        const reps = parseIntStrict(ex.target);
+        if (reps === null || reps < 1 || reps > 1000) errors[`${ep}.target`] = "Entre 1 y 1000 repeticiones.";
+      } else if (ex.targetType === "distance") {
+        const meters = parseIntStrict(ex.target);
+        if (meters === null || meters < 1 || meters > 100000) errors[`${ep}.target`] = "Distancia en metros (1 a 100 000).";
+      } else if (ex.targetType === "time") {
+        const seconds = parseDuration(ex.target);
+        if (seconds === null || seconds < 1 || seconds > 36000) errors[`${ep}.target`] = "Tiempo en mm:ss (por ejemplo 1:30).";
+      } else {
+        errors[`${ep}.targetType`] = "Elige el tipo de objetivo.";
+      }
+
+      if (ex.load.trim() !== "") {
+        const load = parseDecimal(ex.load);
+        if (load === null || load <= 0 || load > maxLoad) errors[`${ep}.load`] = `Carga entre 0 y ${maxLoad} ${opts.weightUnit}.`;
+      }
+      if (ex.rest.trim() !== "") {
+        const rest = parseDuration(ex.rest);
+        if (rest === null || rest > 3600) errors[`${ep}.rest`] = "Descanso en segundos o mm:ss (máx. 60:00).";
+      }
+      if (ex.notes.trim().length > 140) errors[`${ep}.notes`] = "Usa máximo 140 caracteres.";
+    });
+  });
   return errors;
 }

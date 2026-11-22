@@ -100,3 +100,7 @@ Después de cada pantalla, revísala en 360, 390, tablet y desktop. Confirma que
 - **Pantalla anterior oculta (Cache Components):** al navegar con un enlace, Next mantiene la pantalla anterior oculta dentro de `<Activity>`, y sus elementos siguen en el DOM.
   - `getByLabel` y `getByText` también los encuentran. Usa `getByRole`, que ignora lo oculto, o `.filter({ visible: true })`.
   - Ver `field()` en `exercises.spec.ts`.
+- **Datos de prueba de la fase 5:** `templates.spec.ts` crea plantillas `E2E …` (por UI o insertadas en la BD) y las borra al terminar. La prueba de permisos crea un segundo coach, cambia su unidad a lb, verifica el trigger de propiedad y borra la cuenta, como regresión de la FK diferida.
+- **Copia oculta de `ScreenStates`:** su `<Suspense>` usa el contenido como fallback, y puede quedar una copia oculta en el DOM.
+  - En pruebas, usa `getByRole`.
+  - En componentes con estado local dentro de `ScreenStates`, no dependas de ese estado para mostrar resultados importantes: usa el toast global o datos del servidor (ver `TemplateActions`).

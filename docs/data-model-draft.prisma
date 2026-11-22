@@ -6,7 +6,11 @@
 //
 //   [IMPLEMENTADO]  ya existe en prisma/schema.prisma (resumen; ver el esquema
 //                   para @map, índices y reglas SQL de las migraciones).
-//   [FASE 4]        se agrega con la biblioteca de ejercicios.
+//   [FASE 4]        biblioteca de ejercicios (implementada).
+//   [FASE 5]        plantillas: WorkoutTemplate, WorkoutBlock y BlockExercise
+//                   (implementadas; el esquema real usa target_type con un solo
+//                   objetivo por ejercicio, carga en kg, estimated_minutes y la
+//                   FK al ejercicio diferida — ver prisma/schema.prisma).
 //   [FUTURO]        diseño previsto; puede cambiar al implementarse.
 //
 // Separación obligatoria del dominio (CLAUDE.md):
@@ -165,7 +169,7 @@ model ExerciseSubstitution {
 }
 
 // ============================================================================
-// [FUTURO] Plantillas, programación, asignación y registro
+// [FASE 5] Plantillas (resumen) · [FUTURO] programación, asignación y registro
 // ============================================================================
 
 enum Intensity {

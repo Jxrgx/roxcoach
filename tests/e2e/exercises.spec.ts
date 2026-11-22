@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
-import { ATHLETE_STATE, COACH_STATE, collectErrors, dbQuery, e2eEnv, horizontalOverflow, loginViaUi, readSeedIds, smallTargets } from "./helpers";
+import { ATHLETE_STATE, COACH_STATE, collectErrors, dbQuery, e2eEnv, field, horizontalOverflow, loginViaUi, readSeedIds, smallTargets } from "./helpers";
 
 const BASE_URL = "http://localhost:3100";
 /** Ejercicios del sistema con id fijo (migración add_exercises). */
@@ -54,15 +54,6 @@ async function loggedIn(browser: Browser, user: { email: string; password: strin
   await loginViaUi(page, user.email, user.password);
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
   return { ctx, page };
-}
-
-/**
- * Solo elementos visibles: con Cache Components la pantalla anterior queda
- * oculta en el DOM (<Activity>) tras navegar con un enlace, y sus controles
- * homónimos (p. ej. "Dificultad" de la biblioteca) también coincidirían.
- */
-function field(page: Page, label: string | RegExp, exact = true) {
-  return page.getByLabel(label, typeof label === "string" ? { exact } : undefined).filter({ visible: true });
 }
 
 async function addSubstitution(page: Page, name: string) {

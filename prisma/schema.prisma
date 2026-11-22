@@ -1,5 +1,5 @@
-// RoxCoach: esquema activo (fase 4: identidad, perfiles, relación coach–atleta,
-// invitaciones y biblioteca de ejercicios).
+// RoxCoach: esquema activo (fase 5: identidad, perfiles, relación coach–atleta,
+// invitaciones, biblioteca de ejercicios y plantillas de entrenamiento).
 // El modelo de dominio completo previsto está en docs/data-model-draft.prisma.
 //
 // Las filas de `profiles` se crean con un trigger sobre `auth.users`
@@ -61,6 +61,7 @@ model CoachProfile {
   athletes    CoachAthlete[]
   invitations Invitation[]
   exercises   Exercise[]
+  templates   WorkoutTemplate[]
 
   @@map("coach_profiles")
 }
@@ -198,6 +199,7 @@ model Exercise {
 
   substitutions ExerciseSubstitution[] @relation("ExerciseSubstitutions")
   substituteOf  ExerciseSubstitution[] @relation("SubstituteExercises")
+  blockItems    BlockExercise[]
 
   @@index([coachId, archivedAt])
   @@index([category])
@@ -216,4 +218,90 @@ model ExerciseSubstitution {
   @@id([exerciseId, substituteId])
   @@index([substituteId])
   @@map("exercise_substitutions")
+}
+
+enum WorkoutIntensity {
+  baja
+  media
+  alta
+
+  @@map("workout_intensity")
+}
+
+enum TemplateStatus {
+  borrador
+  publicada
+  archivada
+
+  @@map("template_status")
+}
+
+/// Tipo de objetivo de un ejercicio dentro de un bloque.
+enum TargetType {
+  reps
+  distance
+  time
+
+  @@map("target_type")
+}
+
+/// Plantilla de entrenamiento reutilizable del coach (PLANEADO, nunca resultados).
+/// Borrador: puede estar incompleta. Publicada: completa (se podrá programar).
+/// Archivada: oculta sin borrar.
+model WorkoutTemplate {
+  id               String           @id @default(uuid()) @db.Uuid
+  coachId          String           @map("coach_id") @db.Uuid
+  coach            CoachProfile     @relation(fields: [coachId], references: [profileId], onDelete: Cascade)
+  name             String
+  focus            String?
+  intensity        WorkoutIntensity @default(media)
+  /// Minutos aproximados, los define el coach (requerido para publicar).
+  estimatedMinutes Int?             @map("estimated_minutes")
+  status           TemplateStatus   @default(borrador)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  blocks WorkoutBlock[]
+
+  @@index([coachId, status])
+  @@map("workout_templates")
+}
+
+model WorkoutBlock {
+  id         String          @id @default(uuid()) @db.Uuid
+  templateId String          @map("template_id") @db.Uuid
+  template   WorkoutTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  position   Int
+  name       String
+  notes      String?
+
+  exercises BlockExercise[]
+
+  @@index([templateId, position])
+  @@map("workout_blocks")
+}
+
+/// Prescripción planeada de un ejercicio. Exactamente un objetivo según
+/// targetType (CHECK en SQL). La carga se guarda en kg; la distancia en metros.
+model BlockExercise {
+  id              String       @id @default(uuid()) @db.Uuid
+  blockId         String       @map("block_id") @db.Uuid
+  block           WorkoutBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  /// NO ACTION: un ejercicio usado no puede borrarse, pero borrar la cuenta del
+  /// coach (cascada simultánea de ejercicios y plantillas) sí funciona.
+  exerciseId      String       @map("exercise_id") @db.Uuid
+  exercise        Exercise     @relation(fields: [exerciseId], references: [id], onDelete: NoAction)
+  position        Int
+  sets            Int
+  targetType      TargetType   @map("target_type")
+  reps            Int?
+  distanceMeters  Int?         @map("distance_meters")
+  durationSeconds Int?         @map("duration_seconds")
+  loadKg          Float?       @map("load_kg")
+  restSeconds     Int?         @map("rest_seconds")
+  notes           String?
+
+  @@index([blockId, position])
+  @@index([exerciseId])
+  @@map("block_exercises")
 }

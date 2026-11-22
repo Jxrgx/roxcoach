@@ -147,6 +147,42 @@ Un ejercicio ajeno, inexistente o un id inválido muestra el mismo "no está en 
 - **Atleta:** `/atleta/ejercicios/[id]`, sin entrada en la navegación. Se enlazará desde las sesiones.
 - **Shells:** el del atleta también resalta la sección activa detrás de `<Suspense>`, como el del coach, porque tiene rutas dinámicas.
 
+## Constructor de plantillas (fase 5)
+
+**Modelo** (migraciones `add_workout_templates` y `defer_block_exercise_fk`):
+- **`workout_templates`:** nombre, enfoque, intensidad, duración estimada en minutos (la define el coach) y estado (`borrador`, `publicada` o `archivada`). Pertenece a un coach (FK a `coach_profiles`, en cascada).
+- **`workout_blocks`:** posición, nombre y notas.
+- **`block_exercises`:** la **prescripción planeada**; nunca guarda resultados reales.
+  - Datos: ejercicio, posición, series, `target_type` (`reps`, `distance` o `time`) con **exactamente un** objetivo, carga en **kg**, descanso en segundos y nota.
+  - FK al ejercicio **`NO ACTION DEFERRABLE INITIALLY DEFERRED`**: un ejercicio usado no puede borrarse, pero borrar la cuenta de un coach (que elimina en cascada sus ejercicios y plantillas) sí funciona, porque la revisión ocurre al confirmar.
+- **Restricciones en la BD:**
+  - rangos de series, objetivos, carga (> 0 y ≤ 500 kg) y descanso (≤ 1 h);
+  - longitudes de texto;
+  - una publicada siempre tiene duración.
+- **Trigger** `check_block_exercise_owner`: una plantilla solo usa ejercicios del sistema o del **mismo** coach.
+- **RLS:** activo y sin políticas en las 3 tablas.
+
+**Reglas** (`lib/workouts/rules.ts`, `lib/workouts/convert.ts` y `validateTemplate`):
+- **Borrador:** solo exige un nombre válido; lo que sí se capturó debe ser correcto.
+- **Publicar:** exige duración, al menos un bloque y ejercicios en todos los bloques (`publishProblems`). Una plantilla publicada debe seguir completa al guardarse.
+- **Transiciones:** borrador ↔ publicada y cualquiera → archivada. Restaurar devuelve a borrador. Las archivadas no se editan.
+- **Unidades:**
+  - La carga se captura y muestra en la unidad del coach (kg o lb) y se guarda en kg (`loadToKg` y `loadForDisplay`, sin deriva visible).
+  - La distancia, siempre en metros.
+  - El tiempo y el descanso aceptan segundos o `mm:ss`.
+- **Guardar:** reemplaza la plantilla completa (bloques y ejercicios) en una transacción.
+  - Ejercicios permitidos: del sistema o del coach, no archivados.
+  - Uno archivado se conserva solo si la plantilla ya lo usaba; el detalle y el constructor muestran un aviso.
+- **Duplicar:** crea un borrador "(copia)" y la original no cambia.
+
+**Interfaz:**
+- **Constructor** (`/coach/entrenamientos/nueva` y `[id]/editar`):
+  - Datos de la plantilla, después los bloques y dentro de cada bloque sus ejercicios.
+  - Selector de ejercicios en panel inferior; reordenar con botones subir y bajar (accesibles, sin arrastrar).
+  - Errores por ruta de campo, aviso al salir con cambios sin guardar, y vista previa en un modal antes de guardar.
+- **Detalle** (`[id]`): la vista previa como la verá el atleta (`TemplatePreview`) y acciones según el estado, con una sola principal.
+- **Lista:** buscador y filtro por estado.
+
 ## Estados de pantalla
 
 Toda pantalla con datos envuelve su contenido en `ScreenStates` (`components/shared/screen-states.tsx`):
