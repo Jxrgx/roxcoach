@@ -2,6 +2,8 @@
 // Modelo de dominio completo previsto. NO lo usa Prisma: el esquema activo es
 // prisma/schema.prisma (solo identidad y perfiles en la fase 2). Los modelos de
 // este archivo se moverán al esquema activo en los módulos correspondientes.
+// Fase 3: la relación coach–atleta y las invitaciones ya están en el esquema activo
+// (CoachAthlete, Invitation); este borrador aún no lo refleja.
 // Separación obligatoria del dominio (CLAUDE.md):
 //   Exercise → WorkoutTemplate → ScheduledSession → Assignment → SessionLog/SetLog
 // Lo planeado nunca se sobrescribe con lo realizado.

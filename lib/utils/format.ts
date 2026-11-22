@@ -30,12 +30,16 @@ export function formatLongDate(date: Date): string {
   }).format(date);
 }
 
-/** "21 nov 2026". */
-export function formatShortDate(date: Date): string {
+/** Zona horaria para textos calculados en servidor (el host puede estar en UTC). */
+export const APP_TIME_ZONE = "America/Mexico_City";
+
+/** "21 nov 2026". En servidor pasa APP_TIME_ZONE para no depender del host. */
+export function formatShortDate(date: Date, timeZone?: string): string {
   return new Intl.DateTimeFormat(LOCALE, {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone,
   })
     .format(date)
     .replace(".", "");

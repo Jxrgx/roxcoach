@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
+import { LoadingState } from "@/components/ui/loading-state";
 import { AuthLayout } from "@/components/shared/auth-layout";
 import { RegisterForm } from "@/components/shared/register-form";
 
@@ -19,7 +21,10 @@ export default function RegisterPage() {
         </>
       }
     >
-      <RegisterForm />
+      {/* RegisterForm lee ?rol y ?next de la URL. */}
+      <Suspense fallback={<LoadingState label="Cargando…" rows={1} />}>
+        <RegisterForm />
+      </Suspense>
     </AuthLayout>
   );
 }

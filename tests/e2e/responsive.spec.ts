@@ -1,5 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
-import { ATHLETE_STATE, COACH_STATE } from "./helpers";
+import { expect, test } from "@playwright/test";
+import { ATHLETE_STATE, COACH_STATE, collectErrors, horizontalOverflow, readSeedIds, smallTargets, truncatedNavLabels } from "./helpers";
 
 /** Sesión con la que se visita cada ruta (las áreas están protegidas por rol). */
 function stateFor(route: string): string | undefined {
@@ -15,6 +15,8 @@ const ROUTES = [
   "/coach/inicio",
   "/coach/calendario",
   "/coach/atletas",
+  // Detalle del atleta de prueba vinculado en el setup (id resuelto al ejecutar).
+  "/coach/atletas/:atleta",
   "/coach/biblioteca",
   "/coach/entrenamientos",
   "/coach/progreso",
@@ -28,6 +30,11 @@ const ROUTES = [
   "/componentes",
 ];
 
+/** Sustituye ":atleta" por el id del atleta vinculado en el setup. */
+function resolveRoute(route: string): string {
+  return route.includes(":atleta") ? route.replace(":atleta", readSeedIds().athleteId) : route;
+}
+
 const VIEWPORTS = [
   { name: "320", width: 320, height: 640 },
   { name: "360", width: 360, height: 780 },
@@ -35,40 +42,6 @@ const VIEWPORTS = [
   { name: "768", width: 768, height: 1024 },
   { name: "1280", width: 1280, height: 800 },
 ];
-
-function collectErrors(page: Page) {
-  const errors: string[] = [];
-  page.on("console", (msg) => {
-    if (msg.type() === "error") errors.push(msg.text());
-  });
-  page.on("pageerror", (err) => errors.push(err.message));
-  return errors;
-}
-
-/** Elementos interactivos visibles con área táctil menor a 44 × 44 px. */
-async function smallTargets(page: Page) {
-  return page.evaluate(() => {
-    const out: string[] = [];
-    document.querySelectorAll<HTMLElement>("a[href], button, [role=tab], summary, select, input:not([type=radio]):not([type=checkbox])").forEach((el) => {
-      const r = el.getBoundingClientRect();
-      const style = getComputedStyle(el);
-      if (r.width === 0 || r.height === 0 || style.visibility === "hidden") return;
-      if (el.closest(".sr-only") || el.classList.contains("sr-only")) return;
-      if (el.closest("dialog:not([open])")) return;
-      if (r.height < 43.5 || r.width < 43.5) out.push(`${el.tagName.toLowerCase()} "${(el.textContent || el.getAttribute("aria-label") || "").trim().slice(0, 40)}" ${Math.round(r.width)}×${Math.round(r.height)}`);
-    });
-    return out;
-  });
-}
-
-/** Textos de navegación cortados con elipsis. */
-async function truncatedNavLabels(page: Page) {
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll<HTMLElement>("nav .truncate"))
-      .filter((el) => el.getBoundingClientRect().width > 0 && el.scrollWidth > el.clientWidth + 1)
-      .map((el) => el.textContent ?? ""),
-  );
-}
 
 for (const vp of VIEWPORTS) {
   test.describe(`viewport ${vp.name}px`, () => {
@@ -79,19 +52,19 @@ for (const vp of VIEWPORTS) {
         test.use({ storageState: stateFor(route) });
         test(`${route}`, async ({ page }) => {
         const errors = collectErrors(page);
-        const res = await page.goto(route, { waitUntil: "networkidle" });
+        const res = await page.goto(resolveRoute(route), { waitUntil: "networkidle" });
         expect(res?.status(), "la ruta responde").toBeLessThan(400);
 
         await expect(page.locator("h1").first()).toBeVisible();
 
-        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        const overflow = await horizontalOverflow(page);
         expect(overflow, "sin scroll horizontal").toBeLessThanOrEqual(0);
 
         expect(await truncatedNavLabels(page), "etiquetas de navegación completas").toEqual([]);
         expect(await smallTargets(page), "áreas táctiles ≥ 44 px").toEqual([]);
 
         await page.screenshot({
-          path: `test-results/screens/${vp.name}/${route === "/" ? "home" : route.slice(1).replaceAll("/", "_")}.png`,
+          path: `test-results/screens/${vp.name}/${route === "/" ? "home" : route.slice(1).replaceAll("/", "_").replace(":", "")}.png`,
           fullPage: true,
         });
         expect(errors, "sin errores de consola").toEqual([]);
@@ -119,7 +92,7 @@ test.describe("estados de pantalla (360px)", () => {
       test(`${route} muestra todos los estados`, async ({ page }) => {
       const errors = collectErrors(page);
       for (const [state, text] of STATES) {
-        await page.goto(`${route}?estado=${state}`, { waitUntil: "networkidle" });
+        await page.goto(`${resolveRoute(route)}?estado=${state}`, { waitUntil: "networkidle" });
         const region = page.locator("main [role=status], main [role=alert]").filter({ hasText: text }).first();
         await expect(region, `estado ${state}`).toBeVisible();
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -175,7 +148,7 @@ test.describe("diálogos en mobile (360px)", () => {
 
   test("Escape cierra el modal y devuelve el foco", async ({ page }) => {
     await page.goto("/coach/atletas", { waitUntil: "networkidle" });
-    const trigger = page.getByRole("button", { name: "Agregar atleta" }).first();
+    const trigger = page.getByRole("main").getByRole("button", { name: "Invitar atleta" }).first();
     await trigger.click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.keyboard.press("Escape");

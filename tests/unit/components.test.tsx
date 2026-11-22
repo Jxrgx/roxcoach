@@ -9,8 +9,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { SessionStatus } from "@/components/workouts/session-status";
 import { SetLogger } from "@/components/athlete/set-logger";
-import { filterAthletes } from "@/components/coach/athlete-list";
-import { mockAthletes } from "@/lib/mock/coach";
+import { filterInvitations, filterRoster, type RosterItem } from "@/lib/athletes/roster";
 
 describe("Button", () => {
   it("se deshabilita y anuncia el estado mientras guarda", () => {
@@ -124,10 +123,28 @@ describe("SetLogger", () => {
   });
 });
 
-describe("filterAthletes", () => {
-  it("filtra por texto sin acentos y por estado", () => {
-    expect(filterAthletes(mockAthletes, "sofia", "todos").map((a) => a.name)).toEqual(["Sofía T."]);
-    expect(filterAthletes(mockAthletes, "", "pendiente").every((a) => a.status === "pendiente")).toBe(true);
-    expect(filterAthletes(mockAthletes, "pro", "todos").length).toBe(2);
+describe("filterRoster", () => {
+  const roster: RosterItem[] = [
+    { athleteId: "1", name: "Sofía T.", email: "sofia@example.com", division: "Pro Women", status: "active", joinedLabel: "" },
+    { athleteId: "2", name: "Jorge M.", email: "jorge@example.com", division: "Pro Men", status: "paused", joinedLabel: "" },
+    { athleteId: "3", name: "Luis A.", email: "luis@example.com", division: "Doubles Men", status: "active", joinedLabel: "" },
+  ];
+
+  it("filtra por texto sin acentos (nombre, correo o división) y por estado", () => {
+    expect(filterRoster(roster, "sofia", "todos").map((a) => a.name)).toEqual(["Sofía T."]);
+    expect(filterRoster(roster, "JORGE@", "todos").map((a) => a.name)).toEqual(["Jorge M."]);
+    expect(filterRoster(roster, "pro", "todos")).toHaveLength(2);
+    expect(filterRoster(roster, "", "paused").every((a) => a.status === "paused")).toBe(true);
+    expect(filterRoster(roster, "", "active")).toHaveLength(2);
+    expect(filterRoster(roster, "", "invitaciones")).toEqual([]);
+  });
+
+  it("filtra invitaciones por nombre o correo", () => {
+    const invitations = [
+      { id: "a", email: "ana@example.com", name: "Ana", state: "pending" as const, expiresLabel: "" },
+      { id: "b", email: "beto@example.com", name: "", state: "expired" as const, expiresLabel: "" },
+    ];
+    expect(filterInvitations(invitations, "beto").map((i) => i.id)).toEqual(["b"]);
+    expect(filterInvitations(invitations, "")).toHaveLength(2);
   });
 });

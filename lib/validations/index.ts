@@ -141,13 +141,8 @@ export const EQUIPMENT_OPTIONS = [
   "Pista",
 ] as const;
 
-export interface AthleteProfileInput {
+export interface AthleteProfileInput extends SportsInfoInput {
   name: string;
-  division: string;
-  /** "YYYY-MM-DD" o vacío. */
-  raceDate: string;
-  availableDays: string[];
-  equipment: string[];
   weightUnit: string;
 }
 
@@ -160,10 +155,17 @@ function isValidIsoDate(value: string): boolean {
   return date.getUTCFullYear() === y && date.getUTCMonth() === (m ?? 1) - 1 && date.getUTCDate() === d;
 }
 
-export function validateAthleteProfile(input: AthleteProfileInput): FieldErrors<keyof AthleteProfileInput> {
-  const errors: FieldErrors<keyof AthleteProfileInput> = {};
-  if (input.name.trim().length < 2) errors.name = "Escribe tu nombre.";
-  else if (input.name.trim().length > 80) errors.name = "Usa máximo 80 caracteres.";
+/** Información deportiva: la editan el atleta y su coach (con relación activa). */
+export interface SportsInfoInput {
+  division: string;
+  /** "YYYY-MM-DD" o vacío. */
+  raceDate: string;
+  availableDays: string[];
+  equipment: string[];
+}
+
+export function validateSportsInfo(input: SportsInfoInput): FieldErrors<keyof SportsInfoInput> {
+  const errors: FieldErrors<keyof SportsInfoInput> = {};
   if (input.division && !(HYROX_DIVISIONS as readonly string[]).includes(input.division))
     errors.division = "Elige una división HYROX válida.";
   if (input.raceDate && !isValidIsoDate(input.raceDate)) errors.raceDate = "Revisa la fecha de competencia.";
@@ -171,7 +173,31 @@ export function validateAthleteProfile(input: AthleteProfileInput): FieldErrors<
     errors.availableDays = "Hay un día no válido.";
   if (input.equipment.some((e) => !(EQUIPMENT_OPTIONS as readonly string[]).includes(e)))
     errors.equipment = "Hay un equipo no válido.";
+  return errors;
+}
+
+export function validateAthleteProfile(input: AthleteProfileInput): FieldErrors<keyof AthleteProfileInput> {
+  const errors: FieldErrors<keyof AthleteProfileInput> = { ...validateSportsInfo(input) };
+  if (input.name.trim().length < 2) errors.name = "Escribe tu nombre.";
+  else if (input.name.trim().length > 80) errors.name = "Usa máximo 80 caracteres.";
   if (!(WEIGHT_UNITS as readonly string[]).includes(input.weightUnit)) errors.weightUnit = "Elige kilogramos o libras.";
+  return errors;
+}
+
+/* ---------- Invitaciones ---------- */
+
+export interface InvitationInput {
+  email: string;
+  /** Opcional: ayuda al coach a reconocer la invitación. */
+  name: string;
+}
+
+export function validateInvitation(input: InvitationInput): FieldErrors<keyof InvitationInput> {
+  const errors: FieldErrors<keyof InvitationInput> = {};
+  const email = input.email.trim();
+  if (!email) errors.email = "Escribe el correo del atleta.";
+  else if (!EMAIL_RE.test(email) || email.length > 254) errors.email = "Revisa el formato del correo.";
+  if (input.name.trim().length > 80) errors.name = "Usa máximo 80 caracteres.";
   return errors;
 }
 

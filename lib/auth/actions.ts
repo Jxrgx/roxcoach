@@ -1,10 +1,10 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { requestOrigin } from "@/lib/http/origin";
 import { authErrorMessage } from "@/lib/auth/errors";
-import { isRole, ROLE_HOME, safeNextPath } from "@/lib/permissions";
+import { isRole, safeNextPath } from "@/lib/permissions";
 import { hasErrors, validateLogin, validateRegister, type FieldErrors, type LoginInput, type RegisterInput } from "@/lib/validations";
 
 /**
@@ -34,20 +34,15 @@ export async function signIn(input: LoginInput & { next?: string }): Promise<Sig
   redirect(safeNextPath(input.next, role));
 }
 
+function isInternalPath(path: unknown): path is string {
+  return typeof path === "string" && path.startsWith("/") && !path.startsWith("//") && !path.includes("\\");
+}
+
 export type SignUpResult =
   | { ok: false; message?: string; fieldErrors?: FieldErrors<keyof RegisterInput> }
   | { ok: true; status: "check-email"; email: string };
 
-async function requestOrigin(): Promise<string> {
-  const h = await headers();
-  const origin = h.get("origin");
-  if (origin) return origin;
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
-
-export async function signUp(input: RegisterInput): Promise<SignUpResult> {
+export async function signUp(input: RegisterInput & { next?: string }): Promise<SignUpResult> {
   const fieldErrors = validateRegister(input);
   if (hasErrors(fieldErrors)) return { ok: false, fieldErrors };
   if (!isRole(input.role)) return { ok: false, fieldErrors: { role: "Elige si eres coach o atleta." } };
@@ -58,7 +53,8 @@ export async function signUp(input: RegisterInput): Promise<SignUpResult> {
     email,
     password: input.password,
     options: {
-      emailRedirectTo: `${await requestOrigin()}/auth/confirm`,
+      // `next` (p. ej. la invitación) se valida de nuevo en /auth/confirm con safeNextPath.
+      emailRedirectTo: `${await requestOrigin()}/auth/confirm${isInternalPath(input.next) ? `?next=${encodeURIComponent(input.next)}` : ""}`,
       // El trigger de registro copia el rol a app_metadata y crea el perfil.
       data: { name: input.name.trim(), role: input.role },
     },
@@ -66,7 +62,7 @@ export async function signUp(input: RegisterInput): Promise<SignUpResult> {
   if (error) return { ok: false, message: authErrorMessage(error.code) };
 
   // Si la confirmación de correo estuviera desactivada, ya hay sesión.
-  if (data.session) redirect(ROLE_HOME[input.role]);
+  if (data.session) redirect(safeNextPath(input.next, input.role));
 
   // Con confirmación obligatoria (o correo ya registrado) se muestra el mismo
   // mensaje, para no revelar qué correos tienen cuenta.

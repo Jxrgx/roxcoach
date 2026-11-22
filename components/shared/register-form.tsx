@@ -1,14 +1,27 @@
 "use client";
 
 import { useState, useTransition, type FormEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import { AlertTriangle, MailCheck } from "lucide-react";
 import { signUp } from "@/lib/auth/actions";
 import { hasErrors, validateRegister, type FieldErrors, type RegisterInput } from "@/lib/validations";
 import { Input } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 
+/**
+ * Registro. Acepta ?rol=athlete|coach para preseleccionar el rol y ?next para
+ * volver (tras confirmar el correo) a donde se inició, p. ej. una invitación.
+ */
 export function RegisterForm() {
-  const [values, setValues] = useState<RegisterInput>({ name: "", email: "", password: "", role: "" });
+  const params = useSearchParams();
+  const presetRole = params.get("rol");
+  const next = params.get("next") ?? undefined;
+  const [values, setValues] = useState<RegisterInput>({
+    name: "",
+    email: "",
+    password: "",
+    role: presetRole === "athlete" || presetRole === "coach" ? presetRole : "",
+  });
   const [errors, setErrors] = useState<FieldErrors<keyof RegisterInput>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -22,7 +35,7 @@ export function RegisterForm() {
     if (hasErrors(found)) return;
     setMessage(null);
     startTransition(async () => {
-      const result = await signUp(values);
+      const result = await signUp({ ...values, next });
       if (result.ok) {
         setSentTo(result.email);
         return;

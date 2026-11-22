@@ -1,4 +1,4 @@
-// RoxCoach: esquema activo (fase 2: identidad y perfiles).
+// RoxCoach: esquema activo (fase 3: identidad, perfiles, relación coach–atleta e invitaciones).
 // El modelo de dominio completo previsto está en docs/data-model-draft.prisma.
 //
 // Las filas de `profiles` se crean con un trigger sobre `auth.users`
@@ -57,6 +57,9 @@ model CoachProfile {
   distanceUnit DistanceUnit @default(km) @map("distance_unit")
   updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  athletes    CoachAthlete[]
+  invitations Invitation[]
+
   @@map("coach_profiles")
 }
 
@@ -71,5 +74,70 @@ model AthleteProfile {
   weightUnit    WeightUnit @default(kg) @map("weight_unit")
   updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  coaches             CoachAthlete[]
+  acceptedInvitations Invitation[]
+
   @@map("athlete_profiles")
+}
+
+enum RelationStatus {
+  active
+  paused
+  removed
+
+  @@map("relation_status")
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  cancelled
+
+  @@map("invitation_status")
+}
+
+/// Relación coach–atleta. Las FK apuntan a los perfiles de rol, así la base de
+/// datos garantiza que coachId sea coach y athleteId sea atleta.
+/// Regla: un atleta tiene como máximo UNA relación activa o en pausa (índice
+/// único parcial definido en SQL, migración add_coach_athletes).
+model CoachAthlete {
+  id        String         @id @default(uuid()) @db.Uuid
+  coachId   String         @map("coach_id") @db.Uuid
+  coach     CoachProfile   @relation(fields: [coachId], references: [profileId], onDelete: Cascade)
+  athleteId String         @map("athlete_id") @db.Uuid
+  athlete   AthleteProfile @relation(fields: [athleteId], references: [profileId], onDelete: Cascade)
+  status    RelationStatus @default(active)
+  joinedAt  DateTime       @default(now()) @map("joined_at") @db.Timestamptz(6)
+  pausedAt  DateTime?      @map("paused_at") @db.Timestamptz(6)
+  removedAt DateTime?      @map("removed_at") @db.Timestamptz(6)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([coachId, athleteId])
+  @@index([athleteId])
+  @@map("coach_athletes")
+}
+
+/// Invitación de un coach a un atleta, ligada a un correo.
+/// El token nunca se guarda: solo su hash SHA-256. "Expirada" se calcula con
+/// expiresAt (no hay tarea programada).
+model Invitation {
+  id           String           @id @default(uuid()) @db.Uuid
+  coachId      String           @map("coach_id") @db.Uuid
+  coach        CoachProfile     @relation(fields: [coachId], references: [profileId], onDelete: Cascade)
+  /// En minúsculas. Solo una cuenta con este correo puede aceptar.
+  email        String
+  name         String?
+  tokenHash    String           @unique @map("token_hash")
+  status       InvitationStatus @default(pending)
+  expiresAt    DateTime         @map("expires_at") @db.Timestamptz(6)
+  acceptedAt   DateTime?        @map("accepted_at") @db.Timestamptz(6)
+  acceptedById String?          @map("accepted_by_id") @db.Uuid
+  acceptedBy   AthleteProfile?  @relation(fields: [acceptedById], references: [profileId], onDelete: SetNull)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([coachId, status])
+  @@index([email])
+  @@map("invitations")
 }

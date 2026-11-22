@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -126,6 +126,32 @@ function MobileNav({ pathname }: { pathname: string }) {
   );
 }
 
+function SidebarNavList({ pathname }: { pathname: string }) {
+  return (
+    <ul className="flex flex-col gap-0.5">
+      {COACH_NAV.map((item) => (
+        <li key={item.key}>
+          <SidebarLink item={item} active={isActive(pathname, item.href)} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Las partes que dependen de la ruta activa usan usePathname. En rutas con
+ * parámetros dinámicos (p. ej. /coach/atletas/[id]) usePathname suspende con
+ * Cache Components, así que van detrás de Suspense con un fallback idéntico
+ * sin sección resaltada: el shell sigue siendo estático e instantáneo.
+ */
+function SidebarNavActive() {
+  return <SidebarNavList pathname={usePathname()} />;
+}
+
+function MobileNavActive() {
+  return <MobileNav pathname={usePathname()} />;
+}
+
 /**
  * Shell del coach. La navegación es estática; `profileCard` y `mobileProfile`
  * son slots que el servidor llena con el perfil real (detrás de Suspense).
@@ -139,8 +165,6 @@ export function CoachShell({
   profileCard: ReactNode;
   mobileProfile: ReactNode;
 }) {
-  const pathname = usePathname();
-
   return (
     <NewSessionProvider>
       <a
@@ -161,13 +185,9 @@ export function CoachShell({
           <NewSessionButton fullWidth variant="secondary" />
         </div>
         <nav aria-label="Navegación principal" className="mt-5 flex-1 overflow-y-auto px-3">
-          <ul className="flex flex-col gap-0.5">
-            {COACH_NAV.map((item) => (
-              <li key={item.key}>
-                <SidebarLink item={item} active={isActive(pathname, item.href)} />
-              </li>
-            ))}
-          </ul>
+          <Suspense fallback={<SidebarNavList pathname="" />}>
+            <SidebarNavActive />
+          </Suspense>
         </nav>
         <div className="m-3">{profileCard}</div>
       </aside>
@@ -191,7 +211,9 @@ export function CoachShell({
         </main>
       </div>
 
-      <MobileNav pathname={pathname} />
+      <Suspense fallback={<MobileNav pathname="" />}>
+        <MobileNavActive />
+      </Suspense>
     </NewSessionProvider>
   );
 }

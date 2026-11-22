@@ -67,6 +67,45 @@ El proxy usa `app_metadata.role` del JWT para redirigir sin consultar la BD. La 
   - La app escribe desde el servidor con Prisma, como rol propietario, siempre a través del DAL con el id del usuario autenticado.
 - **Acceso a perfiles:** `lib/db/profiles.ts` devuelve DTO. Las Server Actions `app/coach/configuracion/actions.ts` y `app/atleta/perfil/actions.ts` validan otra vez en servidor antes de guardar.
 
+## Atletas e invitaciones (fase 3)
+
+**Modelo:**
+- **`coach_athletes`** (`CoachAthlete`): relación coach–atleta con estado `active`, `paused` o `removed`, y fechas `joined_at`, `paused_at` y `removed_at`.
+  - Sus FK apuntan a `coach_profiles` y `athlete_profiles`, así la base de datos garantiza los roles.
+  - **Regla "un coach a la vez":** un índice único parcial impide más de una relación activa o en pausa por atleta.
+- **`invitations`** (`Invitation`): ligadas a un correo en minúsculas.
+  - Estado `pending`, `accepted` o `cancelled`. "Expirada" se calcula con `expires_at` (7 días), sin tareas programadas.
+  - Una sola invitación pendiente por coach y correo (índice único parcial).
+  - Si el atleta elimina su cuenta, la invitación aceptada conserva su historial con `accepted_by_id = NULL`.
+- **RLS:** activo y sin políticas en ambas tablas; solo el servidor accede.
+
+**Token del enlace:**
+- 32 bytes aleatorios en base64url. En la base de datos solo se guarda su **SHA-256**.
+- El enlace se muestra una sola vez. "Regenerar" emite uno nuevo e invalida el anterior.
+- La página `/invitacion/[token]` usa `noindex` y `referrer: no-referrer`.
+
+**Reglas** (`lib/invitations/rules.ts`, funciones puras con pruebas): `decideAcceptance` determina qué ve quien abre el enlace:
+
+| Situación | Resultado |
+| --- | --- |
+| Sin sesión | Crear cuenta de atleta / Ya tengo cuenta (con `next` de vuelta a la invitación) |
+| Atleta del correo invitado | Botón "Unirme al equipo" → `/atleta/perfil?bienvenida=1` para completar su información |
+| Otro correo, cuenta de coach o atleta con otro coach | Bloqueado, con mensaje y salida clara |
+| Vencida, cancelada o ya usada | Bloqueado; si quien la aceptó la reabre, ve "Ya formas parte del equipo" |
+
+**Aceptación:** ocurre en una transacción que vuelve a evaluar las reglas con datos frescos. La invitación se marca como aceptada solo si sigue pendiente, y el índice parcial resuelve las condiciones de carrera.
+
+**Aislamiento:**
+- Todas las funciones de `lib/db/athletes.ts` y `lib/db/invitations.ts` reciben el `coachId` de la sesión y filtran por él.
+- Un atleta ajeno o un id inválido en `/coach/atletas/[id]` muestra el mismo "no está en tu equipo" que uno inexistente.
+
+**Quién edita la información deportiva:**
+- El atleta, desde su perfil.
+- Su coach, desde el detalle del atleta, solo con la relación **activa**. En pausa, el detalle es de solo lectura.
+- Ambos usan `validateSportsInfo` y el componente `SportsInfoFields`.
+
+**Navegación con rutas dinámicas:** `usePathname` suspende en rutas con parámetros desconocidos (Cache Components). Por eso la navegación del coach que resalta la sección activa va detrás de `<Suspense>`, con un fallback idéntico sin resaltar.
+
 ## Estados de pantalla
 
 Toda pantalla con datos envuelve su contenido en `ScreenStates` (`components/shared/screen-states.tsx`):

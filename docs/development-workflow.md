@@ -68,9 +68,12 @@ Después de cada pantalla, revísala en 360, 390, tablet y desktop. Confirma que
 - **Variables:** viven en `.env.local` (plantilla en `.env.example`). Nunca versiones secretos.
 - **Cambio de esquema:**
   1. Edita `prisma/schema.prisma`.
-  2. Crea la carpeta de migración y genera su SQL con `npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script > prisma/migrations/<fecha>_<nombre>/migration.sql`.
+  2. Crea la carpeta de migración y genera su SQL comparando con el esquema del último commit. Este método no necesita base sombra:
+     `git show HEAD:prisma/schema.prisma > /tmp/schema.before.prisma`, luego
+     `npx prisma migrate diff --from-schema /tmp/schema.before.prisma --to-schema prisma/schema.prisma --script > prisma/migrations/<fecha>_<nombre>/migration.sql`.
   3. Agrega el SQL manual que necesites (RLS, triggers).
   4. Aplica con `npm run db:migrate` y regenera el cliente con `npm run db:generate`.
+  5. **Nunca edites una migración ya aplicada.** Corrige con una migración nueva (ejemplo: `fix_invitation_accepted_check`).
 - **No uses `prisma migrate dev`:** las migraciones usan el esquema `auth` de Supabase, que su base sombra no tiene.
 - **Datos en páginas:** se obtienen en el servidor mediante `lib/auth/session.ts` (`requireCoach` / `requireAthlete`) y `lib/db/*`. Nunca importes `lib/db` en componentes cliente, salvo para tipos.
 - **Server Actions:** toda Server Action que escriba datos debe llamar primero a `requireCoach()` o `requireAthlete()` y repetir la validación de `lib/validations`.
@@ -88,3 +91,8 @@ Después de cada pantalla, revísala en 360, 390, tablet y desktop. Confirma que
   - El envío real se verifica a mano.
 - **Seguridad** (`security.spec.ts`): redirecciones abiertas en el login, y RLS por la API pública (sin lectura de perfiles ni escalada de rol).
 - **Cerrar sesión:** usa `scope: "local"` para no invalidar las sesiones compartidas por otras pruebas.
+- **Datos de prueba de la fase 3:**
+  - El setup vincula al coach y al atleta compartidos (relación activa, idempotente) y guarda sus ids en `tests/e2e/.auth/ids.json`. Así la ruta dinámica `/coach/atletas/[id]` entra en la revisión responsive.
+  - `athletes.spec.ts` crea sus propios atletas, un segundo coach e invitaciones con correos únicos, y los borra o cancela al terminar.
+  - `deleteUser` falla si no puede borrar, para detectar restricciones que bloqueen eliminar cuentas.
+- **Windows / Git Bash:** al filtrar pruebas por ruta (`-g "/coach/atletas"`), usa `MSYS_NO_PATHCONV=1`. Si no, Git Bash convierte la ruta en una ruta de Windows.

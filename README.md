@@ -5,10 +5,10 @@ Plataforma web/PWA en español para coaches y atletas de **HYROX**. Reemplaza pi
 - **Panel del coach** (`/coach/*`): pensado para desktop y tablet.
 - **App del atleta** (`/atleta/*`): pensada para mobile y uso con una mano.
 
-> **Estado actual: fase 2.**
-> - **Ya funciona:** autenticación real (Supabase), roles coach/atleta, rutas protegidas y perfiles en PostgreSQL (Prisma).
-> - **Datos reales:** Configuración del coach, Perfil del atleta y los saludos.
-> - **Todavía con datos ficticios:** sesiones, atletas, biblioteca, entrenamientos, progreso y mensajes.
+> **Estado actual: fase 3.**
+> - **Ya funciona:** autenticación real (Supabase), roles coach/atleta, rutas protegidas, perfiles en PostgreSQL (Prisma) y **gestión de atletas con invitaciones** (relación coach–atleta).
+> - **Datos reales:** Atletas (lista, detalle, invitaciones, pausar y reactivar), invitación pública `/invitacion/[token]`, Configuración del coach, Perfil del atleta (con su coach) y los saludos.
+> - **Todavía con datos ficticios:** sesiones, calendario, biblioteca, entrenamientos, progreso y mensajes.
 
 Las reglas permanentes de desarrollo, diseño y UX están en [CLAUDE.md](CLAUDE.md).
 
@@ -39,7 +39,7 @@ Requisitos: Node.js 20.9 o superior (probado con Node 24) y un proyecto de Supab
    ```
 4. **Configura Auth en el dashboard de Supabase** (Authentication → URL Configuration):
    - Site URL: `http://localhost:3000`
-   - Redirect URLs: `http://localhost:3000/auth/confirm`
+   - Redirect URLs: `http://localhost:3000/auth/confirm**`. El comodín permite el parámetro `?next=`, con el que el registro desde una invitación regresa a ella.
    - "Confirm email" activado (Authentication → Providers → Email).
 5. **Arranca la app.**
    ```bash
@@ -76,6 +76,7 @@ app/
   login/ registro/   Acceso (Supabase Auth)
   auth/confirm       Confirmación de correo
   auth/salir         Cierre de sesión cuando la sesión es inválida
+  invitacion/[token] Invitación pública para unirse al equipo de un coach
   componentes/       Catálogo del sistema visual (desarrollo)
 components/
   ui/                Componentes genéricos
@@ -85,7 +86,9 @@ components/
 lib/
   supabase/          Clientes de navegador/servidor y refresco de sesión
   auth/              Sesión (DAL), Server Actions de acceso y mensajes de error
-  db/                Prisma y acceso a perfiles
+  db/                Prisma: perfiles, atletas (relación coach–atleta) e invitaciones
+  invitations/       Tokens y reglas de invitación (funciones puras)
+  athletes/          Filtros puros de la lista de atletas
   permissions/       Roles, acceso por ruta y destinos seguros
   validations/       Validaciones puras (cliente y servidor)
   env.ts             Variables de entorno con errores claros

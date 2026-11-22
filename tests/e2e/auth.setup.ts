@@ -1,7 +1,7 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { expect, test as setup } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
-import { AUTH_DIR, ATHLETE_STATE, COACH_STATE, e2eEnv, loginViaUi, type E2EEnv } from "./helpers";
+import { AUTH_DIR, ATHLETE_STATE, COACH_STATE, SEED_IDS, dbQuery, e2eEnv, findUserId, loginViaUi, type E2EEnv } from "./helpers";
 
 /**
  * Prepara las sesiones de prueba:
@@ -38,6 +38,9 @@ async function ensureUser(env: E2EEnv, email: string, password: string, role: "c
   if (updateError) throw updateError;
 }
 
+// En serie: el vínculo coach–atleta necesita que ambos usuarios existan.
+setup.describe.configure({ mode: "serial" });
+
 setup.beforeAll(() => {
   mkdirSync(AUTH_DIR, { recursive: true });
 });
@@ -56,4 +59,21 @@ setup("sesión de atleta", async ({ page }) => {
   await loginViaUi(page, env.athleteEmail, env.athletePassword);
   await expect(page).toHaveURL(/\/atleta\/inicio$/);
   await page.context().storageState({ path: ATHLETE_STATE });
+});
+
+setup("vincular coach y atleta de prueba", async () => {
+  const env = e2eEnv();
+  const admin = adminClient(env);
+  const coachId = await findUserId(admin, env.coachEmail);
+  const athleteId = await findUserId(admin, env.athleteEmail);
+  // Datos de prueba: relación ACTIVA entre los usuarios compartidos (idempotente;
+  // restablece el estado aunque una corrida anterior la haya dejado en pausa).
+  await dbQuery(
+    `insert into coach_athletes (id, coach_id, athlete_id, status, joined_at)
+     values (gen_random_uuid(), $1, $2, 'active', now())
+     on conflict (coach_id, athlete_id)
+     do update set status = 'active', paused_at = null, removed_at = null`,
+    [coachId, athleteId],
+  );
+  writeFileSync(SEED_IDS, JSON.stringify({ coachId, athleteId }));
 });

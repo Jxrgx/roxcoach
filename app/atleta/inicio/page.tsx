@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Clock, Layers, Play } from "lucide-react";
+import { Clock, Layers, PauseCircle, Play } from "lucide-react";
 import { requireAthlete } from "@/lib/auth/session";
+import { findAthleteCoach } from "@/lib/db/athletes";
 import { getUpcomingSessions, mockAthletePlan, mockWeeklyProgress, todayWorkout } from "@/lib/mock/athlete";
 import { RaceCountdown } from "@/components/athlete/race-countdown";
 import { formatDuration, relativeDayLabel } from "@/lib/utils/format";
@@ -16,6 +17,7 @@ export const metadata: Metadata = { title: "Inicio" };
 
 export default async function AthleteHomePage() {
   const athlete = await requireAthlete();
+  const coach = await findAthleteCoach(athlete.id);
   const firstName = athlete.name.split(" ")[0];
   const upcoming = getUpcomingSessions(mockAthletePlan, 2);
   const w = todayWorkout;
@@ -26,6 +28,13 @@ export default async function AthleteHomePage() {
         <h1 className="text-2xl font-bold tracking-tight text-ink">Hola, {firstName}</h1>
         <RaceCountdown raceDate={athlete.raceDate} />
       </header>
+
+      {coach?.status === "paused" && (
+        <p role="status" className="mb-5 flex items-start gap-2 rounded-2xl border border-warning/30 bg-warning/10 p-3.5 text-sm text-ink">
+          <PauseCircle aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
+          {coach.coachName} pausó tu plan por ahora.
+        </p>
+      )}
 
       <ScreenStates
         empty={{
