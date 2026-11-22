@@ -244,6 +244,28 @@ Completa la cadena del dominio: **asignación → registro realizado**. Lo plane
   - `/coach/sesiones/[id]/atletas/[athleteId]`: tiempo activo, series, RPE, molestias primero, comentario y planeado vs. realizado (solo lectura, en la unidad del coach).
 - **Componentes:** `SetLogger` (objetivo por tipo, unidad del atleta, corrección y botón fijo), `Timer` (`autoStart`, `showControls`, `onComplete`), `RpePicker`, `DiscomfortDialog`, `ExecutionStatusBadge` y `ExecutionResults`.
 
+## Progreso y métricas (fase 8)
+
+**Sin cambios de base de datos.** Las métricas se calculan al pedir la pantalla a partir de las tablas existentes; no se guardan métricas derivadas.
+
+**Datos** (`lib/db/progress.ts`, solo lectura): una consulta por pantalla trae las asignaciones con su sesión (fecha, estado, snapshot), registro, series y molestias. La BD ya filtra asignaciones `retirada` y sesiones `cancelada`; las funciones puras las vuelven a excluir. Filas cuya sesión se borró a mitad de la consulta se descartan.
+
+**Cálculo** (`lib/progress/metrics.ts`, puras y probadas):
+- **Estados:** asignada (vigente y no cancelada) → pendiente (sin comenzar, hoy o futura), en curso (comenzada, hoy o futura), abandonada (comenzada y su día ya pasó), completada, no realizada (sin comenzar y su día ya pasó).
+- **Adherencia** = completadas ÷ (completadas + no realizadas + abandonadas). Hoy sin hacer no penaliza. Con menos de 3 sesiones vencidas se marca "datos insuficientes"; baja adherencia = < 70 % con datos suficientes.
+- **Periodos:** 7/30/90 días terminan hoy (inclusive) en `America/Mexico_City`. Adherencia, tiempo y RPE usan la fecha programada; "completadas en 7/30/90 días" usa el día real de fin en la zona de la app; las molestias, su día de registro.
+- **Tiempo entrenado:** suma del tiempo activo de las completadas; duraciones ≤ 0 o > 5 h se descartan y se informa cuántas.
+- **RPE promedio:** completadas con RPE (se indica cuántas).
+- **Evolución y marcas:** solo completadas. Se agrupa por `exerciseId` + tipo de objetivo (nunca se mezclan ejercicios ni objetivos). Valor por sesión = mejor serie: carga si alguna serie la registró; si no, reps, distancia o tiempo. Marcas: mayor carga, mayor distancia, más repeticiones y mayor tiempo sostenido (series de tiempo). Una tendencia necesita ≥ 2 sesiones. Estaciones HYROX por los ids fijos de los ejercicios del sistema; los propios del coach, por categoría.
+- **No se muestran** ritmo ni mejor tiempo en distancia: las series de distancia guardan metros, no tiempo.
+- **Unidades:** se calcula en kg, m y s; se muestra en la unidad del usuario.
+
+**Permisos:**
+- Atleta: solo su progreso (id de la sesión del usuario; la ruta no recibe ids).
+- Coach: atletas con relación `active` o `paused` y solo sesiones que él programó. El `?atleta=` y el `[athleteId]` se validan contra esa lista (uno ajeno se ignora o responde 404 sin revelar si existe).
+
+**Interfaz:** orden "¿estoy cumpliendo? → ¿cómo evoluciono? → ¿hay algo que atender?". Adherencia en amarillo como métrica principal; azul eléctrico para tendencias y marcas; barras simples con una tabla oculta para lectores de pantalla y un resumen en texto. Periodo con enlaces (`PeriodTabs`); filtros del coach como formulario GET en un `BottomSheet` (mobile) o en línea (desde tablet). Componentes en `components/progress/`.
+
 ## Estados de pantalla
 
 Toda pantalla con datos envuelve su contenido en `ScreenStates` (`components/shared/screen-states.tsx`):

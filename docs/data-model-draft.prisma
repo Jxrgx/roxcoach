@@ -20,6 +20,10 @@
 //                   las series se ubican por su posición en el snapshot —
 //                   bloque, ejercicio, serie— y la pausa se guarda con
 //                   paused_at / paused_seconds — ver prisma/schema.prisma).
+//   [FASE 8]        progreso: SIN tablas nuevas. Todo se calcula de
+//                   assignments, scheduled_sessions (snapshot), session_logs,
+//                   set_logs y discomfort_reports (lib/progress). No se guardan
+//                   métricas derivadas.
 //   [FUTURO]        diseño previsto; puede cambiar al implementarse.
 //
 // Separación obligatoria del dominio (CLAUDE.md):

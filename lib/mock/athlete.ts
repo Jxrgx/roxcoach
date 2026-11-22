@@ -41,22 +41,3 @@ export function getUpcomingSessions(plan: ScheduledSession[], count: number): Sc
 }
 
 export const mockWeeklyProgress = { done: 3, planned: 5 };
-
-export const mockAthleteProgress = {
-  completedSessions: 42,
-  adherence: 92,
-  personalRecords: [
-    { id: "pr-1", label: "1 km", value: "3:12", date: "Hace 6 días" },
-    { id: "pr-2", label: "Sled Push 50 m (152 kg)", value: "2:41", date: "Hace 3 semanas" },
-    { id: "pr-3", label: "Wall Balls 100 reps", value: "4:58", date: "Hace 1 mes" },
-    { id: "pr-4", label: "Simulación HYROX completa", value: "1:04:52", date: "Hace 5 semanas" },
-  ],
-  /** Mejor tiempo por estación: anterior vs. actual (segundos). Menor es mejor. */
-  stations: [
-    { id: "st-ski", name: "SkiErg 1000 m", previous: 245, current: 236 },
-    { id: "st-push", name: "Sled Push 50 m", previous: 172, current: 161 },
-    { id: "st-pull", name: "Sled Pull 50 m", previous: 198, current: 201 },
-    { id: "st-row", name: "Remo 1000 m", previous: 232, current: 225 },
-    { id: "st-wb", name: "Wall Balls 100", previous: 312, current: 298 },
-  ],
-};

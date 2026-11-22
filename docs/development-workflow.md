@@ -114,3 +114,7 @@ Después de cada pantalla, revísala en 360, 390, tablet y desktop. Confirma que
   - Cada prueba crea su **propio atleta** vinculado al coach compartido. Así no deja sesiones "en curso" en el atleta compartido, cuyo Inicio y Agenda revisan otras pruebas en paralelo (Inicio prioriza una sesión en curso).
   - Las sesiones se insertan en la BD con un snapshot fijo; borrar la sesión en `afterEach` elimina en cascada asignaciones, registros, series y molestias, y después se borra el usuario.
   - Además de la UI, prueban los triggers directamente con SQL (comenzar una cancelada, serie fuera del snapshot, serie tras finalizar, retirar a quien comenzó).
+- **Datos de prueba de la fase 8** (`progress.spec.ts`):
+  - Cada prueba crea sus propios atletas y les inserta historial real: sesiones, `session_logs` (se insertan en curso, se agregan series y molestias y después se completan, porque los triggers solo aceptan series mientras está en curso) y una sesión completada que luego se cancela para comprobar que no cuenta.
+  - Las aserciones del coach se acotan con `?atleta=<id>`: otras pruebas en paralelo agregan atletas al coach compartido.
+  - `<table className="sr-only">` no respeta el ancho de 1 px: envuelve la tabla en un bloque `sr-only` para evitar scroll horizontal.
