@@ -1,4 +1,5 @@
-// RoxCoach: esquema activo (fase 3: identidad, perfiles, relación coach–atleta e invitaciones).
+// RoxCoach: esquema activo (fase 4: identidad, perfiles, relación coach–atleta,
+// invitaciones y biblioteca de ejercicios).
 // El modelo de dominio completo previsto está en docs/data-model-draft.prisma.
 //
 // Las filas de `profiles` se crean con un trigger sobre `auth.users`
@@ -59,6 +60,7 @@ model CoachProfile {
 
   athletes    CoachAthlete[]
   invitations Invitation[]
+  exercises   Exercise[]
 
   @@map("coach_profiles")
 }
@@ -140,4 +142,78 @@ model Invitation {
   @@index([coachId, status])
   @@index([email])
   @@map("invitations")
+}
+
+enum ExerciseCategory {
+  carrera
+  estaciones
+  fuerza
+  movilidad
+
+  @@map("exercise_category")
+}
+
+enum ExerciseDifficulty {
+  principiante
+  intermedio
+  avanzado
+
+  @@map("exercise_difficulty")
+}
+
+enum ExerciseMediaType {
+  video
+  imagen
+
+  @@map("exercise_media_type")
+}
+
+/// Ejercicio de la biblioteca.
+/// coachId NULL = ejercicio del sistema (lo cargan las migraciones; nadie lo edita).
+/// coachId con valor = personalizado: visible y editable solo por su coach.
+/// archivedAt lo oculta de la biblioteca sin borrarlo (las plantillas futuras
+/// podrán seguir referenciándolo).
+model Exercise {
+  id           String              @id @default(uuid()) @db.Uuid
+  coachId      String?             @map("coach_id") @db.Uuid
+  coach        CoachProfile?       @relation(fields: [coachId], references: [profileId], onDelete: Cascade)
+  /// Ejercicio del que se duplicó ("Duplicar como propio"), si aplica.
+  sourceId     String?             @map("source_id") @db.Uuid
+  source       Exercise?           @relation("ExerciseCopies", fields: [sourceId], references: [id], onDelete: SetNull)
+  copies       Exercise[]          @relation("ExerciseCopies")
+  name         String
+  category     ExerciseCategory
+  difficulty   ExerciseDifficulty
+  instructions String
+  /// Indicación clave, breve.
+  cue          String?
+  /// Catálogo EQUIPMENT_OPTIONS (el mismo del perfil del atleta).
+  equipment    String[]            @default([])
+  mediaType    ExerciseMediaType?  @map("media_type")
+  /// Solo https (validado en la app y en la BD).
+  mediaUrl     String?             @map("media_url")
+  archivedAt   DateTime?           @map("archived_at") @db.Timestamptz(6)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  substitutions ExerciseSubstitution[] @relation("ExerciseSubstitutions")
+  substituteOf  ExerciseSubstitution[] @relation("SubstituteExercises")
+
+  @@index([coachId, archivedAt])
+  @@index([category])
+  @@map("exercises")
+}
+
+/// "exercise se puede sustituir por substitute" (dirigida, ordenada).
+/// Máx. 5 por ejercicio (regla de la app); sin auto-referencias (CHECK en SQL).
+model ExerciseSubstitution {
+  exerciseId   String   @map("exercise_id") @db.Uuid
+  exercise     Exercise @relation("ExerciseSubstitutions", fields: [exerciseId], references: [id], onDelete: Cascade)
+  substituteId String   @map("substitute_id") @db.Uuid
+  substitute   Exercise @relation("SubstituteExercises", fields: [substituteId], references: [id], onDelete: Cascade)
+  position     Int      @default(0)
+
+  @@id([exerciseId, substituteId])
+  @@index([substituteId])
+  @@map("exercise_substitutions")
 }

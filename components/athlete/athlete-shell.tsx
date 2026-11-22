@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { BarChart3, CalendarDays, Dumbbell, Home, User, type LucideIcon } from "lucide-react";
 import { ATHLETE_NAV, isActive } from "@/lib/navigation";
 import { cn } from "@/lib/utils/cn";
@@ -17,13 +17,75 @@ const ICONS: Record<string, LucideIcon> = {
   perfil: User,
 };
 
+function TopNavList({ pathname }: { pathname: string }) {
+  return (
+    <ul className="flex items-center gap-1">
+      {ATHLETE_NAV.map((item) => {
+        const active = isActive(pathname, item.href);
+        return (
+          <li key={item.key}>
+            <Link
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "inline-flex min-h-11 items-center rounded-xl px-3 text-sm",
+                active ? "bg-surface-2 font-semibold text-ink" : "text-muted hover:text-ink",
+              )}
+            >
+              {item.label}
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function BottomNavList({ pathname }: { pathname: string }) {
+  return (
+    <ul className="mx-auto grid h-bottom-nav max-w-xl grid-cols-[1fr_1fr_1.45fr_1fr_1fr]">
+      {ATHLETE_NAV.map((item) => {
+        const Icon = ICONS[item.key] ?? Home;
+        const active = isActive(pathname, item.href);
+        return (
+          <li key={item.key}>
+            <Link
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "flex h-full flex-col items-center justify-center gap-1 px-0.5 text-[11px] leading-tight",
+                active ? "font-semibold text-ink" : "text-muted",
+              )}
+            >
+              <Icon aria-hidden className={cn("size-5", active && "text-acid")} />
+              <span className="max-w-full truncate">{item.label}</span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * Las listas que resaltan la sección activa usan usePathname. En rutas con
+ * parámetros dinámicos (p. ej. /atleta/ejercicios/[id]) usePathname suspende
+ * con Cache Components: van detrás de Suspense con un fallback idéntico sin
+ * resaltar, y el shell sigue siendo estático.
+ */
+function TopNavActive() {
+  return <TopNavList pathname={usePathname()} />;
+}
+
+function BottomNavActive() {
+  return <BottomNavList pathname={usePathname()} />;
+}
+
 /**
  * Shell del atleta: pensado para una mano. En mobile la navegación vive
  * abajo (zona del pulgar); desde tablet pasa a una barra superior.
  */
 export function AthleteShell({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-
   return (
     <>
       <a
@@ -39,25 +101,9 @@ export function AthleteShell({ children }: { children: ReactNode }) {
             <Logo />
           </Link>
           <nav aria-label="Navegación principal" className="hidden md:block">
-            <ul className="flex items-center gap-1">
-              {ATHLETE_NAV.map((item) => {
-                const active = isActive(pathname, item.href);
-                return (
-                  <li key={item.key}>
-                    <Link
-                      href={item.href}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "inline-flex min-h-11 items-center rounded-xl px-3 text-sm",
-                        active ? "bg-surface-2 font-semibold text-ink" : "text-muted hover:text-ink",
-                      )}
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            <Suspense fallback={<TopNavList pathname="" />}>
+              <TopNavActive />
+            </Suspense>
           </nav>
         </div>
       </header>
@@ -77,27 +123,9 @@ export function AthleteShell({ children }: { children: ReactNode }) {
         className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg/95 backdrop-blur md:hidden"
       >
         {/* La celda central es más ancha: "Entrenamiento" cabe completo desde 320 px. */}
-        <ul className="mx-auto grid h-bottom-nav max-w-xl grid-cols-[1fr_1fr_1.45fr_1fr_1fr]">
-          {ATHLETE_NAV.map((item) => {
-            const Icon = ICONS[item.key] ?? Home;
-            const active = isActive(pathname, item.href);
-            return (
-              <li key={item.key}>
-                <Link
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "flex h-full flex-col items-center justify-center gap-1 px-0.5 text-[11px] leading-tight",
-                    active ? "font-semibold text-ink" : "text-muted",
-                  )}
-                >
-                  <Icon aria-hidden className={cn("size-5", active && "text-acid")} />
-                  <span className="max-w-full truncate">{item.label}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <Suspense fallback={<BottomNavList pathname="" />}>
+          <BottomNavActive />
+        </Suspense>
       </nav>
     </>
   );

@@ -227,7 +227,11 @@ export function ComponentCatalog() {
       <Block id="dominio" title="WorkoutCard, ExerciseCard, AthleteCard y Disclosure">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           <WorkoutCard name="Engine + Sled Push" when="Hoy · 07:00" durationMinutes={65} intensity="alta" blockCount={4} status="en_curso" athleteCount={2} />
-          {exercise && <ExerciseCard exercise={exercise} />}
+          {exercise && (
+            <ExerciseCard
+              exercise={{ ...exercise, difficulty: "intermedio", mediaType: null, mediaUrl: null, origin: "system" }}
+            />
+          )}
           {athlete && <AthleteCard athlete={athlete} />}
           <Disclosure title="Sled Push" meta="4 × 12.5 m con carga Pro">
             <p className="text-sm text-muted">Brazos extendidos, pasos cortos y rápidos.</p>

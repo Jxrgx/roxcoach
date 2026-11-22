@@ -1,33 +1,32 @@
 import type { Metadata } from "next";
 import { Plus } from "lucide-react";
-import { mockExercises } from "@/lib/mock/workouts";
+import { requireCoach } from "@/lib/auth/session";
+import { listLibrary } from "@/lib/db/exercises";
 import { PageHeader } from "@/components/shared/page-header";
 import { ScreenStates } from "@/components/shared/screen-states";
-import { ComingSoonButton } from "@/components/shared/coming-soon-button";
+import { ButtonLink } from "@/components/ui/button";
 import { ExerciseLibrary } from "@/components/coach/exercise-library";
 
 export const metadata: Metadata = { title: "Biblioteca" };
 
 function NewExercise() {
   return (
-    <ComingSoonButton
-      icon={<Plus aria-hidden className="size-5" />}
-      module="biblioteca de ejercicios"
-      description="Podrás crear ejercicios propios con video, equipo necesario e indicaciones técnicas."
-      fullWidth
-      className="sm:w-auto"
-    >
+    <ButtonLink href="/coach/biblioteca/nuevo" icon={<Plus aria-hidden className="size-5" />} fullWidth className="sm:w-auto">
       Nuevo ejercicio
-    </ComingSoonButton>
+    </ButtonLink>
   );
 }
 
-export default function LibraryPage() {
+export default async function LibraryPage() {
+  const coach = await requireCoach();
+  const exercises = await listLibrary(coach.id);
+  const own = exercises.filter((e) => e.origin === "own" && !e.archived).length;
+
   return (
     <>
       <PageHeader
         title="Biblioteca"
-        description="Ejercicios y estaciones HYROX listos para usar en tus plantillas."
+        description={`Ejercicios de RoxCoach${own ? ` y ${own} ${own === 1 ? "personalizado" : "personalizados"}` : ""}, listos para tus plantillas.`}
         action={<NewExercise />}
       />
       <ScreenStates
@@ -39,7 +38,7 @@ export default function LibraryPage() {
         loadingLabel="Cargando biblioteca…"
         loadingVariant="cards"
       >
-        <ExerciseLibrary exercises={mockExercises} />
+        <ExerciseLibrary exercises={exercises} />
       </ScreenStates>
     </>
   );

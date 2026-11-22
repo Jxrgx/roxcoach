@@ -106,6 +106,47 @@ El proxy usa `app_metadata.role` del JWT para redirigir sin consultar la BD. La 
 
 **Navegación con rutas dinámicas:** `usePathname` suspende en rutas con parámetros desconocidos (Cache Components). Por eso la navegación del coach que resalta la sección activa va detrás de `<Suspense>`, con un fallback idéntico sin resaltar.
 
+## Biblioteca de ejercicios (fase 4)
+
+**Modelo** (migración `add_exercises`):
+- **`exercises`:**
+  - Datos: nombre, categoría, dificultad, instrucciones, indicación clave, equipo y medio por URL (`media_type` + `media_url`).
+  - `archived_at` para archivar sin borrar; `source_id` guarda de qué ejercicio del sistema se duplicó una copia.
+  - `coach_id NULL` = ejercicio del sistema; con valor = personalizado de ese coach (FK a `coach_profiles`, en cascada).
+- **`exercise_substitutions`:** "A se puede sustituir por B", ordenada por `position`.
+- **Restricciones en la BD:**
+  - URL solo `https` (≤ 500 caracteres) y medio completo o ninguno.
+  - Longitudes de nombre, instrucciones e indicación clave.
+  - Nada de auto-sustituciones.
+  - El trigger `check_exercise_substitution` exige que una sustitución apunte a un ejercicio del sistema o del **mismo** coach. Los del sistema solo se sustituyen entre sí, así nunca se mezclan bibliotecas.
+- **RLS:** activo y sin políticas.
+- **Ejercicios del sistema:** 14, con ids fijos, más 4 sustituciones base, cargados en la propia migración. El equipo usa el catálogo `EQUIPMENT_OPTIONS`, el mismo del perfil del atleta.
+
+**Permisos** (`lib/exercises/rules.ts`, aplicados además en cada consulta de `lib/db/exercises.ts`):
+
+| Quién | Ve | Edita, archiva o restaura | Duplica |
+| --- | --- | --- | --- |
+| Coach | Sistema + los suyos (incluidos sus archivados) | Solo los suyos | Solo los del sistema |
+| Atleta | Sistema + los de su coach actual, no archivados (solo lectura) | — | — |
+
+Un ejercicio ajeno, inexistente o un id inválido muestra el mismo "no está en tu biblioteca".
+
+**Reglas:**
+- **Archivar** pide confirmación. El ejercicio sale de la lista y de los candidatos a sustitución, pero se conserva y puede restaurarse.
+- **Editar** solo aplica a ejercicios propios activos. Al editar, las sustituciones que apuntan a ejercicios archivados se descartan.
+- **Duplicar como propio** copia un ejercicio del sistema con sus sustituciones y abre la copia para editarla; el original no cambia.
+- **Sustituciones:** máximo 5, únicas, distintas del propio ejercicio y disponibles (`checkSubstitutions`), validadas en la misma transacción que guarda el ejercicio.
+
+**Medios:**
+- Las imágenes se muestran con `next/image` en modo `unoptimized` (el dominio es libre) y `referrerPolicy="no-referrer"`.
+- Los videos nunca se incrustan: "Ver video" abre en otra pestaña con `rel="noopener noreferrer"`.
+- No hay subida de archivos ni Storage.
+
+**Rutas:**
+- **Coach:** `/coach/biblioteca` (lista), `/coach/biblioteca/nuevo`, `/coach/biblioteca/[id]` y `/coach/biblioteca/[id]/editar`.
+- **Atleta:** `/atleta/ejercicios/[id]`, sin entrada en la navegación. Se enlazará desde las sesiones.
+- **Shells:** el del atleta también resalta la sección activa detrás de `<Suspense>`, como el del coach, porque tiene rutas dinámicas.
+
 ## Estados de pantalla
 
 Toda pantalla con datos envuelve su contenido en `ScreenStates` (`components/shared/screen-states.tsx`):

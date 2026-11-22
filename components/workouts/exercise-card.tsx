@@ -1,58 +1,69 @@
-import { Play, VideoOff } from "lucide-react";
-import type { Exercise, ExerciseCategory } from "@/lib/types/domain";
-import { formatClock } from "@/lib/utils/format";
+import Link from "next/link";
+import { Archive, BadgeCheck } from "lucide-react";
+import {
+  CATEGORY_LABEL,
+  DIFFICULTY_LABEL,
+  type ExerciseCategoryValue,
+  type ExerciseDifficultyValue,
+  type ExerciseOrigin,
+  type MediaTypeValue,
+} from "@/lib/exercises/rules";
+import { cn } from "@/lib/utils/cn";
 import { Badge } from "@/components/ui/badge";
+import { ExerciseMedia } from "@/components/workouts/exercise-media";
 
-export const CATEGORY_LABEL: Record<ExerciseCategory, string> = {
-  carrera: "Carrera",
-  estaciones: "Estaciones HYROX",
-  fuerza: "Fuerza",
-  movilidad: "Movilidad",
-};
+export { CATEGORY_LABEL };
 
-/** Ejercicio de la biblioteca con representación visual del video. */
-export function ExerciseCard({ exercise }: { exercise: Exercise }) {
-  const hasVideo = exercise.videoDurationSeconds !== undefined;
-  return (
-    <article className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
-      <div
-        role="img"
-        aria-label={hasVideo ? `Video de demostración de ${exercise.name}` : `${exercise.name} sin video`}
-        className="relative flex aspect-video items-center justify-center bg-surface-2"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(135deg, transparent 0 14px, rgb(255 255 255 / 0.025) 14px 28px)",
-        }}
-      >
-        {hasVideo ? (
-          <>
-            <span className="flex size-12 items-center justify-center rounded-full border border-line bg-bg/80">
-              <Play aria-hidden className="ml-0.5 size-5 text-ink" />
-            </span>
-            <span className="absolute right-2.5 bottom-2.5 rounded-md bg-bg/85 px-1.5 py-0.5 text-xs font-medium tabular-nums text-ink">
-              {formatClock(exercise.videoDurationSeconds ?? 0)}
-            </span>
-          </>
-        ) : (
-          <span className="flex items-center gap-1.5 text-sm text-muted">
-            <VideoOff aria-hidden className="size-4" />
-            Sin video
-          </span>
-        )}
-      </div>
+export interface ExerciseCardData {
+  name: string;
+  category: ExerciseCategoryValue;
+  difficulty?: ExerciseDifficultyValue;
+  equipment: string[];
+  cue: string;
+  mediaType: MediaTypeValue | null;
+  mediaUrl: string | null;
+  origin?: ExerciseOrigin;
+  archived?: boolean;
+}
+
+/** Ejercicio de la biblioteca: medio visual, categoría, dificultad, origen y equipo. */
+export function ExerciseCard({ exercise, href }: { exercise: ExerciseCardData; href?: string }) {
+  const body = (
+    <>
+      <ExerciseMedia name={exercise.name} mediaType={exercise.mediaType} mediaUrl={exercise.mediaUrl} />
       <div className="p-4">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold leading-snug text-ink">{exercise.name}</h3>
+        <h3 className="font-semibold leading-snug text-ink">{exercise.name}</h3>
+        <div className="mt-2 flex flex-wrap gap-1.5">
           <Badge>{CATEGORY_LABEL[exercise.category]}</Badge>
+          {exercise.difficulty && <Badge tone="info">{DIFFICULTY_LABEL[exercise.difficulty]}</Badge>}
+          {exercise.origin === "system" && (
+            <Badge tone="neutral" icon={<BadgeCheck aria-hidden />}>
+              RoxCoach
+            </Badge>
+          )}
+          {exercise.origin === "own" && <Badge tone="positive">Personalizado</Badge>}
+          {exercise.archived && (
+            <Badge tone="warning" icon={<Archive aria-hidden />}>
+              Archivado
+            </Badge>
+          )}
         </div>
-        <p className="mt-1.5 text-sm text-muted">{exercise.cue}</p>
-        {exercise.equipment.length > 0 && (
-          <p className="mt-2 text-sm text-ink">
-            <span className="text-muted">Equipo: </span>
-            {exercise.equipment.join(", ")}
-          </p>
-        )}
+        {exercise.cue && <p className="mt-2 text-sm text-muted">{exercise.cue}</p>}
+        <p className="mt-2 text-sm text-ink">
+          <span className="text-muted">Equipo: </span>
+          {exercise.equipment.length > 0 ? exercise.equipment.join(", ") : "Sin equipo"}
+        </p>
       </div>
-    </article>
+    </>
   );
+
+  const base = "block h-full overflow-hidden rounded-2xl border border-line bg-surface shadow-card";
+  if (href) {
+    return (
+      <Link href={href} className={cn(base, "transition-colors hover:border-muted/50")}>
+        {body}
+      </Link>
+    );
+  }
+  return <article className={base}>{body}</article>;
 }

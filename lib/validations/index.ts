@@ -223,3 +223,61 @@ export function hasErrors<T extends string>(errors: FieldErrors<T>): boolean {
 
 /** Resultado estándar de una Server Action con validación por campo. */
 export type ActionResult<K extends string> = { ok: true } | { ok: false; errors?: FieldErrors<K>; message?: string };
+
+/* ---------- Biblioteca de ejercicios ---------- */
+
+const EXERCISE_CATEGORY_VALUES = ["carrera", "estaciones", "fuerza", "movilidad"];
+const EXERCISE_DIFFICULTY_VALUES = ["principiante", "intermedio", "avanzado"];
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface ExerciseInput {
+  name: string;
+  category: string;
+  difficulty: string;
+  instructions: string;
+  cue: string;
+  equipment: string[];
+  /** "" (sin medio) | "video" | "imagen". */
+  mediaType: string;
+  mediaUrl: string;
+  /** Ids en orden de preferencia (máx. 5). */
+  substituteIds: string[];
+}
+
+export function validateExercise(input: ExerciseInput): FieldErrors<keyof ExerciseInput> {
+  const errors: FieldErrors<keyof ExerciseInput> = {};
+  const name = input.name.trim();
+  if (name.length < 2) errors.name = "Escribe el nombre del ejercicio.";
+  else if (name.length > 80) errors.name = "Usa máximo 80 caracteres.";
+  if (!EXERCISE_CATEGORY_VALUES.includes(input.category)) errors.category = "Elige una categoría.";
+  if (!EXERCISE_DIFFICULTY_VALUES.includes(input.difficulty)) errors.difficulty = "Elige una dificultad.";
+  const instructions = input.instructions.trim();
+  if (instructions.length < 10) errors.instructions = "Describe cómo se ejecuta (mínimo 10 caracteres).";
+  else if (instructions.length > 2000) errors.instructions = "Usa máximo 2000 caracteres.";
+  if (input.cue.trim().length > 140) errors.cue = "Usa máximo 140 caracteres.";
+  if (input.equipment.some((e) => !(EQUIPMENT_OPTIONS as readonly string[]).includes(e)) || new Set(input.equipment).size !== input.equipment.length)
+    errors.equipment = "Hay un equipo no válido.";
+
+  const url = input.mediaUrl.trim();
+  if (input.mediaType === "") {
+    if (url) errors.mediaType = "Elige si el enlace es un video o una imagen.";
+  } else if (input.mediaType !== "video" && input.mediaType !== "imagen") {
+    errors.mediaType = "Elige video o imagen.";
+  } else if (!url) {
+    errors.mediaUrl = "Pega el enlace del medio.";
+  } else {
+    let parsed: URL | null = null;
+    try {
+      parsed = new URL(url);
+    } catch {
+      parsed = null;
+    }
+    if (!parsed || parsed.protocol !== "https:" || /\s/.test(url)) errors.mediaUrl = "Usa un enlace completo que empiece con https://";
+    else if (url.length > 500) errors.mediaUrl = "El enlace es demasiado largo.";
+  }
+
+  if (input.substituteIds.length > 5) errors.substituteIds = "Elige como máximo 5 sustituciones.";
+  else if (input.substituteIds.some((id) => !UUID_PATTERN.test(id)) || new Set(input.substituteIds).size !== input.substituteIds.length)
+    errors.substituteIds = "Hay sustituciones no válidas.";
+  return errors;
+}

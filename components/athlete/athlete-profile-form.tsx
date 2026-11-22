@@ -9,7 +9,8 @@ import { Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { StickyActions } from "@/components/shared/sticky-actions";
-import { FormSection, SportsInfoFields } from "@/components/athlete/sports-info-fields";
+import { SportsInfoFields } from "@/components/athlete/sports-info-fields";
+import { FormSection } from "@/components/ui/form-controls";
 
 export function AthleteProfileForm({ profile }: { profile: AthleteProfileDTO }) {
   const [values, setValues] = useState<AthleteProfileInput>({

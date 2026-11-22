@@ -96,3 +96,7 @@ Después de cada pantalla, revísala en 360, 390, tablet y desktop. Confirma que
   - `athletes.spec.ts` crea sus propios atletas, un segundo coach e invitaciones con correos únicos, y los borra o cancela al terminar.
   - `deleteUser` falla si no puede borrar, para detectar restricciones que bloqueen eliminar cuentas.
 - **Windows / Git Bash:** al filtrar pruebas por ruta (`-g "/coach/atletas"`), usa `MSYS_NO_PATHCONV=1`. Si no, Git Bash convierte la ruta en una ruta de Windows.
+- **Datos de prueba de la fase 4:** `exercises.spec.ts` crea ejercicios con nombres que empiezan con `E2E ` y los borra al terminar. La app nunca borra ejercicios (solo archiva); las pruebas sí, para no dejar residuos. Los 14 ejercicios del sistema tienen ids fijos (`00000000-0000-4000-8000-0000000000NN`).
+- **Pantalla anterior oculta (Cache Components):** al navegar con un enlace, Next mantiene la pantalla anterior oculta dentro de `<Activity>`, y sus elementos siguen en el DOM.
+  - `getByLabel` y `getByText` también los encuentran. Usa `getByRole`, que ignora lo oculto, o `.filter({ visible: true })`.
+  - Ver `field()` en `exercises.spec.ts`.

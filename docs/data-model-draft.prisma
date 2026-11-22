@@ -1,119 +1,208 @@
-// REFERENCIA DE FASES FUTURAS — RoxCoach
-// Modelo de dominio completo previsto. NO lo usa Prisma: el esquema activo es
-// prisma/schema.prisma (solo identidad y perfiles en la fase 2). Los modelos de
-// este archivo se moverán al esquema activo en los módulos correspondientes.
-// Fase 3: la relación coach–atleta y las invitaciones ya están en el esquema activo
-// (CoachAthlete, Invitation); este borrador aún no lo refleja.
+// MODELO DE DOMINIO DE REFERENCIA — RoxCoach
+//
+// Documento de diseño. NO lo usa Prisma: el esquema activo (fuente de verdad)
+// es prisma/schema.prisma. Este archivo muestra el modelo completo previsto y
+// en qué fase se implementa cada parte:
+//
+//   [IMPLEMENTADO]  ya existe en prisma/schema.prisma (resumen; ver el esquema
+//                   para @map, índices y reglas SQL de las migraciones).
+//   [FASE 4]        se agrega con la biblioteca de ejercicios.
+//   [FUTURO]        diseño previsto; puede cambiar al implementarse.
+//
 // Separación obligatoria del dominio (CLAUDE.md):
 //   Exercise → WorkoutTemplate → ScheduledSession → Assignment → SessionLog/SetLog
 // Lo planeado nunca se sobrescribe con lo realizado.
+//
+// Convenciones del esquema real: ids UUID, tablas en snake_case, FK de rol a
+// coach_profiles / athlete_profiles (la BD garantiza el rol), RLS activo sin
+// políticas (solo el servidor accede vía Prisma).
 
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+// ============================================================================
+// [IMPLEMENTADO] Identidad y perfiles (fase 2)
+// ============================================================================
 
 enum Role {
-  COACH
-  ATHLETE
+  coach
+  athlete
 }
 
-enum Intensity {
-  BAJA
-  MEDIA
-  ALTA
-}
+/// profiles.id = auth.users.id (Supabase Auth). Lo crea un trigger al registrarse.
+model Profile {
+  id    String @id @db.Uuid
+  email String
+  name  String
+  role  Role
 
-enum TemplateStatus {
-  BORRADOR
-  PUBLICADA
-  ARCHIVADA
-}
-
-enum AssignmentStatus {
-  PROGRAMADA
-  EN_CURSO
-  COMPLETADA
-  OMITIDA
-}
-
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  role      Role
-  createdAt DateTime @default(now())
-
-  coachProfile   CoachProfile?
-  athleteProfile AthleteProfile?
+  coach   CoachProfile?
+  athlete AthleteProfile?
 }
 
 model CoachProfile {
-  id           String  @id @default(cuid())
-  userId       String  @unique
-  user         User    @relation(fields: [userId], references: [id])
-  gymName      String
-  weightUnit   String  @default("kg")
-  distanceUnit String  @default("km")
+  profileId    String  @id @db.Uuid
+  gymName      String?
+  weightUnit   String // kg | lb
+  distanceUnit String // km | mi
 
-  athletes  AthleteProfile[]
-  exercises Exercise[]
-  templates WorkoutTemplate[]
-  sessions  ScheduledSession[]
+  athletes    CoachAthlete[]
+  invitations Invitation[]
+  exercises   Exercise[] // [FASE 4]
+  templates   WorkoutTemplate[] // [FUTURO]
+  sessions    ScheduledSession[] // [FUTURO]
 }
 
 model AthleteProfile {
-  id             String    @id @default(cuid())
-  userId         String    @unique
-  user           User      @relation(fields: [userId], references: [id])
-  coachId        String?
-  coach          CoachProfile? @relation(fields: [coachId], references: [id])
-  division       String
-  raceDate       DateTime?
-  availableDays  String[]
-  equipment      String[]
+  profileId     String    @id @db.Uuid
+  division      String?
+  raceDate      DateTime? @db.Date
+  availableDays String[]
+  equipment     String[] // mismo catálogo que Exercise.equipment
+  weightUnit    String
 
-  assignments Assignment[]
+  coaches             CoachAthlete[]
+  acceptedInvitations Invitation[]
+  assignments         Assignment[] // [FUTURO]
 }
 
-model Exercise {
-  id            String   @id @default(cuid())
-  coachId       String?
-  coach         CoachProfile? @relation(fields: [coachId], references: [id])
-  name          String
-  category      String
-  equipment     String[]
-  videoUrl      String?
-  cue           String?
-  createdAt     DateTime @default(now())
+// ============================================================================
+// [IMPLEMENTADO] Relación coach–atleta e invitaciones (fase 3)
+// ============================================================================
 
-  blockItems BlockExercise[]
+enum RelationStatus {
+  active
+  paused
+  removed
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  cancelled
+}
+
+/// Un atleta tiene como máximo UNA relación active/paused (índice único parcial).
+model CoachAthlete {
+  id        String         @id @db.Uuid
+  coachId   String         @db.Uuid // → CoachProfile
+  athleteId String         @db.Uuid // → AthleteProfile
+  status    RelationStatus
+  joinedAt  DateTime
+  pausedAt  DateTime?
+  removedAt DateTime?
+
+  @@unique([coachId, athleteId])
+}
+
+/// Ligada a un correo; solo se guarda el hash SHA-256 del token. Vence a 7 días.
+model Invitation {
+  id           String           @id @db.Uuid
+  coachId      String           @db.Uuid
+  email        String
+  name         String?
+  tokenHash    String           @unique
+  status       InvitationStatus
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  acceptedById String?          @db.Uuid // SET NULL si el atleta elimina su cuenta
+}
+
+// ============================================================================
+// [FASE 4] Biblioteca de ejercicios
+// ============================================================================
+
+/// Categorías fijas del sistema (ampliarlas requiere migración).
+enum ExerciseCategory {
+  carrera
+  estaciones
+  fuerza
+  movilidad
+}
+
+enum ExerciseDifficulty {
+  principiante
+  intermedio
+  avanzado
+}
+
+enum ExerciseMediaType {
+  video
+  imagen
+}
+
+/// coachId NULL = ejercicio del sistema (lo carga una migración, nadie lo edita).
+/// coachId con valor = ejercicio personalizado, visible y editable solo por su coach.
+/// Archivar (archivedAt) lo oculta de la biblioteca sin borrarlo: las plantillas
+/// futuras podrán seguir referenciándolo.
+model Exercise {
+  id           String              @id @db.Uuid
+  coachId      String?             @db.Uuid // → CoachProfile (CASCADE)
+  /// Si es copia de un ejercicio del sistema ("Duplicar como propio").
+  sourceId     String?             @db.Uuid // → Exercise (SET NULL)
+  name         String
+  category     ExerciseCategory
+  difficulty   ExerciseDifficulty
+  instructions String // pasos de ejecución (nivel 3: se muestran bajo demanda)
+  cue          String? // indicación clave, breve (nivel 2)
+  equipment    String[] // catálogo EQUIPMENT_OPTIONS
+  mediaType    ExerciseMediaType?
+  mediaUrl     String? // solo https; los videos se abren como enlace externo
+  archivedAt   DateTime?
+  createdAt    DateTime
+  updatedAt    DateTime
+
+  substitutions ExerciseSubstitution[] @relation("ExerciseSubstitutions")
+  substituteOf  ExerciseSubstitution[] @relation("SubstituteExercises")
+  blockItems    BlockExercise[] // [FUTURO]
+}
+
+/// "exercise se puede sustituir por substitute" (dirigida; máx. 5 por ejercicio;
+/// sin auto-referencias). Solo los ejercicios personalizados definen las suyas.
+model ExerciseSubstitution {
+  exerciseId   String @db.Uuid
+  substituteId String @db.Uuid
+  position     Int
+
+  @@id([exerciseId, substituteId])
+}
+
+// ============================================================================
+// [FUTURO] Plantillas, programación, asignación y registro
+// ============================================================================
+
+enum Intensity {
+  baja
+  media
+  alta
+}
+
+enum TemplateStatus {
+  borrador
+  publicada
+  archivada
+}
+
+enum AssignmentStatus {
+  programada
+  en_curso
+  completada
+  omitida
 }
 
 model WorkoutTemplate {
-  id              String         @id @default(cuid())
-  coachId         String
-  coach           CoachProfile   @relation(fields: [coachId], references: [id])
+  id              String         @id @db.Uuid
+  coachId         String         @db.Uuid
   name            String
   focus           String?
   durationMinutes Int
   intensity       Intensity
-  status          TemplateStatus @default(BORRADOR)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  status          TemplateStatus
 
   blocks   WorkoutBlock[]
   sessions ScheduledSession[]
 }
 
 model WorkoutBlock {
-  id         String          @id @default(cuid())
-  templateId String
-  template   WorkoutTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  id         String @id @db.Uuid
+  templateId String @db.Uuid // CASCADE
   order      Int
   name       String
   summary    String?
@@ -123,11 +212,9 @@ model WorkoutBlock {
 
 /// Prescripción planeada (objetivos). Nunca guarda resultados reales.
 model BlockExercise {
-  id              String       @id @default(cuid())
-  blockId         String
-  block           WorkoutBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
-  exerciseId      String
-  exercise        Exercise     @relation(fields: [exerciseId], references: [id])
+  id              String @id @db.Uuid
+  blockId         String @db.Uuid // CASCADE
+  exerciseId      String @db.Uuid // → Exercise (los archivados siguen referenciables)
   order           Int
   sets            Int
   reps            Int?
@@ -139,27 +226,23 @@ model BlockExercise {
 
 /// Copia programada de una plantilla en una fecha. Editarla no altera la plantilla.
 model ScheduledSession {
-  id          String          @id @default(cuid())
-  coachId     String
-  coach       CoachProfile    @relation(fields: [coachId], references: [id])
-  templateId  String?
-  template    WorkoutTemplate? @relation(fields: [templateId], references: [id])
+  id          String   @id @db.Uuid
+  coachId     String   @db.Uuid
+  templateId  String?  @db.Uuid
   name        String
   scheduledAt DateTime
-  snapshot    Json            // bloques y prescripción congelados al programar
+  snapshot    Json // bloques y prescripción congelados al programar
 
   assignments Assignment[]
 }
 
 /// Sesión asignada a un atleta; permite personalizar sin afectar a otros.
 model Assignment {
-  id          String           @id @default(cuid())
-  sessionId   String
-  session     ScheduledSession @relation(fields: [sessionId], references: [id])
-  athleteId   String
-  athlete     AthleteProfile   @relation(fields: [athleteId], references: [id])
-  status      AssignmentStatus @default(PROGRAMADA)
-  overrides   Json?            // ajustes individuales sobre el snapshot
+  id        String           @id @db.Uuid
+  sessionId String           @db.Uuid
+  athleteId String           @db.Uuid // → AthleteProfile
+  status    AssignmentStatus
+  overrides Json? // ajustes individuales sobre el snapshot
 
   log SessionLog?
 
@@ -168,9 +251,8 @@ model Assignment {
 
 /// Registro realizado (resultados reales).
 model SessionLog {
-  id           String     @id @default(cuid())
-  assignmentId String     @unique
-  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  id           String    @id @db.Uuid
+  assignmentId String    @unique @db.Uuid
   startedAt    DateTime
   finishedAt   DateTime?
   comment      String?
@@ -179,15 +261,14 @@ model SessionLog {
 }
 
 model SetLog {
-  id                    String     @id @default(cuid())
-  sessionLogId          String
-  sessionLog            SessionLog @relation(fields: [sessionLogId], references: [id], onDelete: Cascade)
-  blockExerciseId       String     // referencia a lo planeado, sin modificarlo
+  id                    String   @id @db.Uuid
+  sessionLogId          String   @db.Uuid // CASCADE
+  blockExerciseId       String   @db.Uuid // referencia a lo planeado, sin modificarlo
   setNumber             Int
   actualReps            Int?
   actualDistanceMeters  Float?
   actualLoadKg          Float?
   actualDurationSeconds Int?
   rpe                   Int?
-  createdAt             DateTime   @default(now())
+  createdAt             DateTime
 }

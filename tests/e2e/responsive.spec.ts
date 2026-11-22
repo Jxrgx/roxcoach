@@ -18,6 +18,9 @@ const ROUTES = [
   // Detalle del atleta de prueba vinculado en el setup (id resuelto al ejecutar).
   "/coach/atletas/:atleta",
   "/coach/biblioteca",
+  "/coach/biblioteca/nuevo",
+  // Ejercicio del sistema (id fijo de la migración add_exercises).
+  "/coach/biblioteca/:sistema",
   "/coach/entrenamientos",
   "/coach/progreso",
   "/coach/mensajes",
@@ -27,12 +30,19 @@ const ROUTES = [
   "/atleta/sesiones",
   "/atleta/progreso",
   "/atleta/perfil",
+  "/atleta/ejercicios/:sistema",
   "/componentes",
 ];
 
 /** Sustituye ":atleta" por el id del atleta vinculado en el setup. */
+/** Ejercicio del sistema "Sled Push" (id fijo de la migración add_exercises). */
+const SYSTEM_EXERCISE_ID = "00000000-0000-4000-8000-000000000004";
+
+/** Sustituye ":atleta" y ":sistema" por ids reales de los datos de prueba. */
 function resolveRoute(route: string): string {
-  return route.includes(":atleta") ? route.replace(":atleta", readSeedIds().athleteId) : route;
+  if (route.includes(":atleta")) return route.replace(":atleta", readSeedIds().athleteId);
+  if (route.includes(":sistema")) return route.replace(":sistema", SYSTEM_EXERCISE_ID);
+  return route;
 }
 
 const VIEWPORTS = [
@@ -77,7 +87,8 @@ for (const vp of VIEWPORTS) {
 test.describe("estados de pantalla (360px)", () => {
   test.use({ viewport: { width: 360, height: 780 } });
 
-  const DATA_ROUTES = ROUTES.filter((r) => r.startsWith("/coach/") || r.startsWith("/atleta/"));
+  // Pantallas con datos dinámicos (los formularios de alta no muestran estados de lista).
+  const DATA_ROUTES = ROUTES.filter((r) => (r.startsWith("/coach/") || r.startsWith("/atleta/")) && !r.endsWith("/nuevo"));
   const STATES: Array<[string, RegExp]> = [
     ["cargando", /Cargando/],
     ["vacio", /./],
