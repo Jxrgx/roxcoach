@@ -295,6 +295,26 @@ Salvo molestias, se excluyen sesiones canceladas y asignaciones retiradas.
 
 **Interfaz:** `/coach/avisos` (acción principal "Marcar todos como leídos", filtros GET en `BottomSheet`/en línea, historial en "Leídos"); 3 avisos sin leer en Inicio con "Ver todos"; contador como slot de servidor en `CoachShell` (campana en mobile, enlace "Avisos" en la barra lateral) con nombre accesible "Avisos, N sin leer". Cada prioridad tiene icono, texto, etiqueta accesible y color de apoyo; las molestias muestran "Reporte del atleta; no constituye un diagnóstico médico."
 
+## Personalización por atleta (fase 10)
+
+**Por qué una tabla relacional** (y no un JSON en la asignación): cada ajuste tiene columnas tipadas, rangos con CHECK, una fila única por elemento y un trigger que conoce el estado de la sesión, de la asignación y de la ejecución. Restaurar es borrar filas; la auditoría queda en `created_by`/`updated_by` y `updated_at`.
+
+**Modelo** (migración `add_assignment_overrides`): `assignment_overrides` con `assignment_id` (cascada) y la posición del elemento en el snapshot (`block_index`, `exercise_index`; el snapshot no tiene ids propios y la posición es la misma que usan `set_logs` y las molestias). `UNIQUE (assignment_id, block_index, exercise_index)`.
+- Ajustes opcionales: series, **un** objetivo (reps, distancia o tiempo, el del mismo tipo que el original), carga (kg) o `remove_load` ("sin carga"), descanso, nota, `skipped`.
+- Sustitución: `replacement_exercise_id` (`SET NULL`) + copia **congelada** de nombre, categoría y equipo: cambios posteriores en la biblioteca no alteran la sesión personalizada.
+- CHECK: mismos rangos que `block_exercises`, como máximo un objetivo, carga y "sin carga" excluyentes, sustitución completa y nunca una fila vacía.
+- Trigger `check_assignment_override` (insertar, actualizar y borrar): asignación `asignada`, sesión `programada` y **sin registro de ejecución** (al comenzar, todo queda bloqueado aunque el coach tenga permisos); la posición existe; el objetivo es del tipo original; el reemplazo es del sistema o del mismo coach y no está archivado. Las acciones referenciales (`SET NULL` por un ejercicio o coach borrado) y los borrados en cascada se permiten para no bloquear el borrado de cuentas.
+- `check_set_log_position` se reemplazó (nueva versión en la misma migración): valida las series contra el plan **personalizado** (series ajustadas) y rechaza series de un ejercicio omitido.
+- RLS activo y sin políticas.
+
+**Plan efectivo** (`lib/overrides/apply.ts`): `applyOverrides(snapshot, ajustes)` devuelve una copia con la versión del atleta; cada ejercicio conserva `original`, `adapted`, `replaced`, `skipped` y `athleteNote`. El snapshot y la plantilla nunca se escriben. `setSlots`, `isValidPosition` y `summarize` excluyen los omitidos (ni pendientes ni "no realizadas").
+
+**Dónde se aplica:** el DAL entrega el plan efectivo en el detalle, la ejecución y el resumen del atleta (`lib/db/sessions.ts` y `lib/db/execution.ts`, solo con los ajustes del propio atleta), en los resultados del coach, en el progreso (marcas y evolución usan el ejercicio sustituto) y en los avisos (series planeadas personalizadas). `logSetAction` valida contra el plan efectivo y el trigger lo repite: el cliente solo envía la posición. Como los ajustes se bloquean al comenzar, la pareja original + ajuste es inmutable y sirve de historial sin copiarse a `set_logs`.
+
+**Permisos:** solo el coach dueño de la sesión, con relación **activa** con el atleta (`findAssignmentForOverride`, `saveAssignmentOverrides`, `saveOverridesAction`); un registro ajeno responde 404. Los reemplazos se validan contra la biblioteca del coach en el servidor (nombre, categoría y equipo salen de la BD, no del cliente). Guardar reemplaza los ajustes de esa asignación en una transacción y vuelve a revisar los bloqueos.
+
+**Interfaz:** editor por ejercicio (acordeones con "Plan original" y "Ajuste para este atleta"), resumen de cambios antes de guardar, vista previa de la versión del atleta, "Restaurar original" por ejercicio y "Restaurar todo" con confirmación, aviso al descartar cambios. Única acción fija: "Guardar personalización". Bloqueada con mensaje claro si el atleta ya comenzó, la sesión se canceló, el atleta fue retirado o está en pausa.
+
 ## Estados de pantalla
 
 Toda pantalla con datos envuelve su contenido en `ScreenStates` (`components/shared/screen-states.tsx`):

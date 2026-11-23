@@ -6,6 +6,8 @@ import { findTemplateForCoach } from "@/lib/db/templates";
 import { buildSnapshot, parseSnapshot, snapshotExerciseCount, type SessionSnapshotV1 } from "@/lib/scheduling/snapshot";
 import type { WorkoutIntensityValue } from "@/lib/workouts/rules";
 import type { ExecutionStatus } from "@/lib/execution/progress";
+import { effectivePlan, OVERRIDE_SELECT } from "@/lib/db/overrides";
+import type { EffectivePlan } from "@/lib/overrides/apply";
 
 /**
  * Sesiones programadas y asignaciones.
@@ -36,6 +38,8 @@ export interface SessionAthleteDTO {
   /** Solo en el detalle de la sesión (atletas asignados). */
   execution?: ExecutionStatus;
   discomfortCount?: number;
+  /** Tiene ajustes individuales (fase 10). */
+  personalized?: boolean;
 }
 
 export interface CoachSessionDetailDTO extends SessionSummaryDTO {
@@ -48,7 +52,8 @@ export interface CoachSessionDetailDTO extends SessionSummaryDTO {
 export interface AthleteSessionDTO extends SessionSummaryDTO {
   notes: string;
   coachName: string;
-  snapshot: SessionSnapshotV1;
+  /** Plan EFECTIVO del atleta (snapshot + sus ajustes). */
+  snapshot: EffectivePlan;
   /** Estado de la ejecución del propio atleta. */
   execution: ExecutionStatus;
 }
@@ -99,6 +104,7 @@ export async function findCoachSession(coachId: string, id: string): Promise<Coa
         include: {
           athlete: { select: { division: true, profile: { select: { name: true } } } },
           log: { select: { status: true, _count: { select: { discomforts: true } } } },
+          _count: { select: { overrides: true } },
         },
         orderBy: { createdAt: "asc" },
       },
@@ -111,8 +117,9 @@ export async function findCoachSession(coachId: string, id: string): Promise<Coa
     templateId: s.templateId,
     snapshot: parseSnapshot(s.snapshot) ?? EMPTY_SNAPSHOT,
     athletes: toSessionAthletes(s.assignments).map((a) => {
-      const log = s.assignments.find((r) => r.athleteId === a.athleteId)?.log;
-      return { ...a, execution: log?.status ?? "sin_iniciar", discomfortCount: log?._count.discomforts ?? 0 };
+      const row = s.assignments.find((r) => r.athleteId === a.athleteId);
+      const log = row?.log;
+      return { ...a, execution: log?.status ?? "sin_iniciar", discomfortCount: log?._count.discomforts ?? 0, personalized: (row?._count.overrides ?? 0) > 0 };
     }),
   };
 }
@@ -253,18 +260,30 @@ export async function removeAthleteFromSession(coachId: string, sessionId: strin
 
 /* ---------- Atleta ---------- */
 
-const ATHLETE_INCLUDE = {
-  coach: { select: { profile: { select: { name: true } } } },
-  assignments: { select: { status: true, athleteId: true, log: { select: { status: true } } } },
-} satisfies Prisma.ScheduledSessionInclude;
+/** Incluye SOLO los ajustes del propio atleta (nunca los de otros atletas de la sesión). */
+function athleteInclude(athleteId: string) {
+  return {
+    coach: { select: { profile: { select: { name: true } } } },
+    assignments: {
+      select: {
+        status: true,
+        athleteId: true,
+        log: { select: { status: true } },
+        overrides: { where: { assignment: { athleteId } }, select: OVERRIDE_SELECT },
+      },
+    },
+  } satisfies Prisma.ScheduledSessionInclude;
+}
 
-function toAthleteSession(athleteId: string, s: Prisma.ScheduledSessionGetPayload<{ include: typeof ATHLETE_INCLUDE }>): AthleteSessionDTO {
+type AthleteSessionRow = Prisma.ScheduledSessionGetPayload<{ include: ReturnType<typeof athleteInclude> }>;
+
+function toAthleteSession(athleteId: string, s: AthleteSessionRow): AthleteSessionDTO {
   const own = s.assignments.find((a) => a.athleteId === athleteId && a.status === "asignada");
   return {
     ...toSummary(s),
     notes: s.notes ?? "",
     coachName: s.coach?.profile?.name ?? "Tu coach",
-    snapshot: parseSnapshot(s.snapshot) ?? EMPTY_SNAPSHOT,
+    snapshot: effectivePlan(s.snapshot, own?.overrides),
     execution: own?.log?.status ?? "sin_iniciar",
   };
 }
@@ -273,7 +292,7 @@ function toAthleteSession(athleteId: string, s: Prisma.ScheduledSessionGetPayloa
 export async function listAthleteSessions(athleteId: string, from: string, to: string): Promise<AthleteSessionDTO[]> {
   const rows = await db().scheduledSession.findMany({
     where: { scheduledDate: { gte: dateOf(from), lte: dateOf(to) }, assignments: { some: { athleteId, status: "asignada" } } },
-    include: ATHLETE_INCLUDE,
+    include: athleteInclude(athleteId),
     orderBy: ORDER,
   });
   return rows.map((r) => toAthleteSession(athleteId, r));
@@ -283,7 +302,7 @@ export async function listAthleteSessions(athleteId: string, from: string, to: s
 export async function listUpcomingAthleteSessions(athleteId: string, from: string, limit: number): Promise<AthleteSessionDTO[]> {
   const rows = await db().scheduledSession.findMany({
     where: { status: "programada", scheduledDate: { gte: dateOf(from) }, assignments: { some: { athleteId, status: "asignada" } } },
-    include: ATHLETE_INCLUDE,
+    include: athleteInclude(athleteId),
     orderBy: ORDER,
     take: limit,
   });
@@ -294,7 +313,7 @@ export async function listUpcomingAthleteSessions(athleteId: string, from: strin
 export async function findAthleteSession(athleteId: string, id: string): Promise<AthleteSessionDTO | null> {
   const s = await db().scheduledSession.findFirst({
     where: { id, assignments: { some: { athleteId, status: "asignada" } } },
-    include: ATHLETE_INCLUDE,
+    include: athleteInclude(athleteId),
   });
   return s ? toAthleteSession(athleteId, s) : null;
 }
@@ -303,7 +322,7 @@ export async function findAthleteSession(athleteId: string, id: string): Promise
 export async function findInProgressAthleteSession(athleteId: string): Promise<AthleteSessionDTO | null> {
   const s = await db().scheduledSession.findFirst({
     where: { assignments: { some: { athleteId, status: "asignada", log: { is: { status: "en_curso" } } } } },
-    include: ATHLETE_INCLUDE,
+    include: athleteInclude(athleteId),
     orderBy: ORDER,
   });
   return s ? toAthleteSession(athleteId, s) : null;

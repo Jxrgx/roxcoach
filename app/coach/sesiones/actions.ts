@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { requireCoach } from "@/lib/auth/session";
 import { addAthletesToSession, cancelSession, createSession, removeAthleteFromSession, updateSessionDetails } from "@/lib/db/sessions";
 import { addDaysKey, todayKey } from "@/lib/scheduling/dates";
+import { findAssignmentForOverride, listReplacementOptions, saveAssignmentOverrides } from "@/lib/db/overrides";
+import { LOCK_MESSAGE, validateOverrideForm, type OverrideFieldErrors, type OverrideFormItem } from "@/lib/overrides/apply";
 import { APP_TIME_ZONE } from "@/lib/utils/format";
 import {
   hasErrors,
@@ -126,5 +128,53 @@ export async function removeAthleteAction(id: string, athleteId: string): Promis
     return { ok: false, message: GENERIC_ERROR };
   }
   revalidateSchedule(id);
+  return { ok: true };
+}
+
+/* ---------- Personalización por atleta (fase 10) ---------- */
+
+/**
+ * Guarda la personalización de UN atleta en una sesión propia. Los reemplazos
+ * se validan contra la biblioteca del coach en el servidor y el plan contra el
+ * snapshot; nunca se confía en nombres, categorías ni valores del cliente.
+ * Una lista vacía restaura el plan original.
+ */
+export async function saveOverridesAction(
+  sessionId: string,
+  athleteId: string,
+  items: OverrideFormItem[],
+): Promise<{ ok: true } | { ok: false; message: string; errors?: OverrideFieldErrors }> {
+  const coach = await requireCoach();
+  if (!UUID_RE.test(sessionId) || !UUID_RE.test(athleteId) || !Array.isArray(items) || items.length > 600) return { ok: false, message: "La sesión no existe." };
+  try {
+    const target = await findAssignmentForOverride(coach.id, sessionId, athleteId);
+    if (!target) return { ok: false, message: "La sesión no existe." };
+    if (target.lock !== "editable") return { ok: false, message: LOCK_MESSAGE[target.lock] };
+    const originalIds = target.snapshot.blocks.flatMap((b) => b.exercises.map((e) => e.exerciseId));
+    const { options } = await listReplacementOptions(coach.id, originalIds);
+    const clean = items.map((it) => ({
+      blockIndex: Number(it.blockIndex),
+      exerciseIndex: Number(it.exerciseIndex),
+      skipped: it.skipped === true,
+      sets: String(it.sets ?? ""),
+      target: String(it.target ?? ""),
+      load: String(it.load ?? ""),
+      removeLoad: it.removeLoad === true,
+      rest: String(it.rest ?? ""),
+      note: String(it.note ?? ""),
+      replacementId: String(it.replacementId ?? ""),
+    }));
+    const validated = validateOverrideForm(clean, target.snapshot, coach.weightUnit, new Map(options.map((o) => [o.id, o])));
+    if (!validated.ok) return { ok: false, message: "Revisa los campos marcados.", errors: validated.errors };
+    const saved = await saveAssignmentOverrides(coach.id, sessionId, athleteId, validated.rows);
+    if (!saved.ok) return { ok: false, message: saved.reason === "not-found" ? "La sesión no existe." : LOCK_MESSAGE[saved.reason] };
+  } catch (error) {
+    console.error("saveOverridesAction", error);
+    return { ok: false, message: GENERIC_ERROR };
+  }
+  revalidatePath(`/coach/sesiones/${sessionId}`);
+  revalidatePath(`/coach/sesiones/${sessionId}/atletas/${athleteId}`);
+  revalidatePath(`/coach/sesiones/${sessionId}/atletas/${athleteId}/personalizar`);
+  revalidatePath("/atleta", "layout");
   return { ok: true };
 }

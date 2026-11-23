@@ -5,7 +5,7 @@ import { db } from "@/lib/db/prisma";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { buildAlertCandidates, shouldResolveMissed, windowStart, type AlertKindValue, type AlertPriority, type ReadFilter } from "@/lib/alerts/rules";
 import { setSlots } from "@/lib/execution/progress";
-import { parseSnapshot } from "@/lib/scheduling/snapshot";
+import { effectivePlan, OVERRIDE_SELECT } from "@/lib/db/overrides";
 import { todayKey } from "@/lib/scheduling/dates";
 import { APP_TIME_ZONE } from "@/lib/utils/format";
 
@@ -91,7 +91,7 @@ async function insertNewAlerts(coachId: string): Promise<number> {
         blockIndex: true,
         exerciseIndex: true,
         createdAt: true,
-        sessionLog: { select: { assignment: { select: { athleteId: true, session: { select: { id: true, title: true, snapshot: true } } } } } },
+        sessionLog: { select: { assignment: { select: { athleteId: true, overrides: { select: OVERRIDE_SELECT }, session: { select: { id: true, title: true, snapshot: true } } } } } },
       },
     }),
     db().sessionLog.findMany({
@@ -106,7 +106,7 @@ async function insertNewAlerts(coachId: string): Promise<number> {
         finishedAt: true,
         rpe: true,
         _count: { select: { sets: true } },
-        assignment: { select: { athleteId: true, status: true, session: { select: { id: true, title: true, status: true, snapshot: true } } } },
+        assignment: { select: { athleteId: true, status: true, overrides: { select: OVERRIDE_SELECT }, session: { select: { id: true, title: true, status: true, snapshot: true } } } },
       },
     }),
     db().assignment.findMany({
@@ -132,14 +132,15 @@ async function insertNewAlerts(coachId: string): Promise<number> {
       discomforts: discomforts.flatMap((d) => {
         const a = d.sessionLog?.assignment;
         if (!a?.session) return [];
-        const snapshot = parseSnapshot(a.session.snapshot);
-        const exerciseName = d.blockIndex !== null && d.exerciseIndex !== null ? (snapshot?.blocks[d.blockIndex]?.exercises[d.exerciseIndex]?.name ?? null) : null;
+        const snapshot = effectivePlan(a.session.snapshot, a.overrides);
+        const exerciseName = d.blockIndex !== null && d.exerciseIndex !== null ? (snapshot.blocks[d.blockIndex]?.exercises[d.exerciseIndex]?.name ?? null) : null;
         return [{ id: d.id, athleteId: a.athleteId, sessionId: a.session.id, sessionTitle: a.session.title, zone: d.zone, intensity: d.intensity, exerciseName, createdAt: d.createdAt }];
       }),
       logs: logs.flatMap((l) => {
         const a = l.assignment;
         if (!a?.session) return [];
-        const snapshot = parseSnapshot(a.session.snapshot);
+        // Series planeadas del plan PERSONALIZADO (series ajustadas, sin omitidos).
+        const snapshot = effectivePlan(a.session.snapshot, a.overrides);
         return [
           {
             logId: l.id,
@@ -153,7 +154,7 @@ async function insertNewAlerts(coachId: string): Promise<number> {
             finishedAt: l.finishedAt,
             rpe: l.rpe,
             loggedSets: l._count.sets,
-            plannedSets: snapshot ? setSlots(snapshot).length : 0,
+            plannedSets: setSlots(snapshot).length,
           },
         ];
       }),

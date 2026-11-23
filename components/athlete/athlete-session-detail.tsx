@@ -1,5 +1,15 @@
 import Link from "next/link";
-import { CalendarDays, ChevronRight, Clock, Layers, Package, Play, StickyNote, XCircle } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronRight,
+  Clock,
+  Layers,
+  Package,
+  Play,
+  StickyNote,
+  XCircle,
+  UserCog,
+} from "lucide-react";
 import type { AthleteSessionDTO } from "@/lib/db/sessions";
 import { formatKeyLong } from "@/lib/scheduling/dates";
 import { snapshotEquipment } from "@/lib/scheduling/snapshot";
@@ -9,6 +19,7 @@ import { Disclosure } from "@/components/ui/disclosure";
 import { ButtonLink } from "@/components/ui/button";
 import { startAvailability } from "@/lib/execution/progress";
 import { ExecutionStatusBadge } from "@/components/workouts/execution-status";
+import { Badge } from "@/components/ui/badge";
 import { StartSessionButton } from "@/components/athlete/start-session-button";
 import { StickyActions } from "@/components/shared/sticky-actions";
 import { Intensity } from "@/components/workouts/intensity";
@@ -32,7 +43,12 @@ export function AthleteSessionDetail({
 }) {
   const s = session.snapshot;
   const cancelled = session.status === "cancelada";
-  const availability = startAvailability({ sessionStatus: session.status, date: session.date, today, execution: session.execution });
+  const availability = startAvailability({
+    sessionStatus: session.status,
+    date: session.date,
+    today,
+    execution: session.execution,
+  });
   const executionHref = `/atleta/sesiones/${session.id}/${session.execution === "completada" ? "resumen" : "ejecutar"}`;
   const equipment = snapshotEquipment(s);
 
@@ -46,9 +62,13 @@ export function AthleteSessionDetail({
               {formatKeyLong(session.date)}
             </>
           )}
-          {session.startTime && <span className="tabular-nums">· {session.startTime}</span>}
+          {session.startTime && (
+            <span className="tabular-nums">· {session.startTime}</span>
+          )}
         </p>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight text-ink">{session.title}</h1>
+        <h1 className="mt-1 text-3xl font-bold tracking-tight text-ink">
+          {session.title}
+        </h1>
         {session.execution !== "sin_iniciar" && (
           <div className="mt-2">
             <ExecutionStatusBadge status={session.execution} />
@@ -60,7 +80,11 @@ export function AthleteSessionDetail({
           <div className="flex items-center gap-1.5">
             <dt className="sr-only">Duración</dt>
             <Clock aria-hidden className="size-4 text-muted" />
-            <dd className="font-semibold tabular-nums text-ink">{s.estimatedMinutes ? formatDuration(s.estimatedMinutes) : "Sin duración"}</dd>
+            <dd className="font-semibold tabular-nums text-ink">
+              {s.estimatedMinutes
+                ? formatDuration(s.estimatedMinutes)
+                : "Sin duración"}
+            </dd>
           </div>
           <div className="flex items-center gap-1.5">
             <dt className="sr-only">Bloques</dt>
@@ -79,7 +103,10 @@ export function AthleteSessionDetail({
       </header>
 
       {cancelled && (
-        <p role="status" className="mt-5 flex items-start gap-2 rounded-2xl border border-danger/40 bg-danger/10 p-3.5 text-sm text-ink">
+        <p
+          role="status"
+          className="mt-5 flex items-start gap-2 rounded-2xl border border-danger/40 bg-danger/10 p-3.5 text-sm text-ink"
+        >
           <XCircle aria-hidden className="mt-0.5 size-4 shrink-0 text-danger" />
           Tu coach canceló esta sesión.
         </p>
@@ -87,7 +114,10 @@ export function AthleteSessionDetail({
 
       {session.notes && (
         <p className="mt-5 flex items-start gap-2.5 rounded-2xl border border-line bg-surface p-4 text-sm whitespace-pre-line text-ink">
-          <StickyNote aria-hidden className="mt-0.5 size-4 shrink-0 text-muted" />
+          <StickyNote
+            aria-hidden
+            className="mt-0.5 size-4 shrink-0 text-muted"
+          />
           <span>
             <span className="sr-only">Notas de tu coach: </span>
             {session.notes}
@@ -105,34 +135,87 @@ export function AthleteSessionDetail({
               <Disclosure
                 title={
                   <span className="flex items-center gap-2.5">
-                    <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-sm tabular-nums text-muted">{i + 1}</span>
+                    <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-sm tabular-nums text-muted">
+                      {i + 1}
+                    </span>
                     {b.name}
                   </span>
                 }
                 meta={
                   <span className="pl-9.5">
-                    {b.exercises.length} {b.exercises.length === 1 ? "ejercicio" : "ejercicios"}
+                    {b.exercises.length}{" "}
+                    {b.exercises.length === 1 ? "ejercicio" : "ejercicios"}
                   </span>
                 }
               >
-                {b.notes && <p className="mb-3 whitespace-pre-line text-sm text-muted">{b.notes}</p>}
+                {b.notes && (
+                  <p className="mb-3 whitespace-pre-line text-sm text-muted">
+                    {b.notes}
+                  </p>
+                )}
                 <ul className="flex flex-col gap-2">
-                  {b.exercises.map((e, j) => (
-                    <li key={`${j}-${e.exerciseId}`}>
-                      <Link
-                        href={`/atleta/ejercicios/${e.exerciseId}`}
-                        className="flex min-h-11 items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-surface-2"
-                        aria-label={`${e.name}: ${formatPrescription(e, unit)}. Ver ejercicio`}
+                  {b.exercises.map((e, j) =>
+                    e.skipped ? (
+                      <li
+                        key={`${j}-${e.exerciseId}`}
+                        className="flex min-h-11 flex-wrap items-center gap-2 rounded-xl px-2 py-1.5"
                       >
-                        <span className="min-w-0 flex-1">
-                          <span className="block font-medium text-ink">{e.name}</span>
-                          <span className="block text-sm tabular-nums text-muted">{formatPrescription(e, unit)}</span>
-                          {e.notes && <span className="block text-sm text-muted italic">{e.notes}</span>}
+                        <span className="font-medium text-muted line-through decoration-muted">
+                          {e.name}
                         </span>
-                        <ChevronRight aria-hidden className="size-4 shrink-0 text-muted" />
-                      </Link>
-                    </li>
-                  ))}
+                        <Badge tone="warning">Ejercicio omitido</Badge>
+                        {e.athleteNote && (
+                          <span className="block w-full text-sm text-muted italic">
+                            {e.athleteNote}
+                          </span>
+                        )}
+                      </li>
+                    ) : (
+                      <li key={`${j}-${e.exerciseId}`}>
+                        <Link
+                          href={`/atleta/ejercicios/${e.exerciseId}`}
+                          className="flex min-h-11 items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-surface-2"
+                          aria-label={`${e.name}: ${formatPrescription(e, unit)}. Ver ejercicio`}
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="flex flex-wrap items-center gap-2 font-medium text-ink">
+                              {e.name}
+                              {e.adapted && (
+                                <Badge
+                                  tone="info"
+                                  icon={<UserCog aria-hidden />}
+                                >
+                                  Adaptado para ti
+                                </Badge>
+                              )}
+                            </span>
+                            <span className="block text-sm tabular-nums text-muted">
+                              {formatPrescription(e, unit)}
+                            </span>
+                            {e.replaced && (
+                              <span className="block text-sm text-muted">
+                                En lugar de {e.original.name}
+                              </span>
+                            )}
+                            {e.athleteNote && (
+                              <span className="block text-sm text-ink italic">
+                                Tu coach: {e.athleteNote}
+                              </span>
+                            )}
+                            {e.notes && (
+                              <span className="block text-sm text-muted italic">
+                                {e.notes}
+                              </span>
+                            )}
+                          </span>
+                          <ChevronRight
+                            aria-hidden
+                            className="size-4 shrink-0 text-muted"
+                          />
+                        </Link>
+                      </li>
+                    ),
+                  )}
                 </ul>
               </Disclosure>
             </li>
@@ -156,7 +239,10 @@ export function AthleteSessionDetail({
           >
             <ul className="flex flex-wrap gap-2">
               {equipment.map((item) => (
-                <li key={item} className="rounded-full border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink">
+                <li
+                  key={item}
+                  className="rounded-full border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink"
+                >
                   {item}
                 </li>
               ))}
@@ -174,7 +260,9 @@ export function AthleteSessionDetail({
             className="sm:w-auto sm:min-w-64"
             icon={<Play aria-hidden className="size-5" />}
           >
-            {session.execution === "completada" ? "Ver resumen" : "Continuar entrenamiento"}
+            {session.execution === "completada"
+              ? "Ver resumen"
+              : "Continuar entrenamiento"}
           </ButtonLink>
         </StickyActions>
       ) : availability === "disponible" ? (
@@ -182,7 +270,10 @@ export function AthleteSessionDetail({
           <StartSessionButton sessionId={session.id} />
         </StickyActions>
       ) : availability === "futura" ? (
-        <p role="note" className="mt-6 flex items-start gap-2.5 rounded-2xl border border-line bg-surface p-4 text-sm text-muted">
+        <p
+          role="note"
+          className="mt-6 flex items-start gap-2.5 rounded-2xl border border-line bg-surface p-4 text-sm text-muted"
+        >
           <CalendarDays aria-hidden className="mt-0.5 size-4 shrink-0" />
           Podrás comenzarla el {formatKeyLong(session.date).toLowerCase()}.
         </p>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, type FormEvent } from "react";
-import { AlertTriangle, CalendarX2, ChevronRight, Pencil, UserMinus, UserPlus } from "lucide-react";
+import { AlertTriangle, CalendarX2, ChevronRight, Pencil, UserCog, UserMinus, UserPlus } from "lucide-react";
 import type { ExecutionStatus } from "@/lib/execution/progress";
 import { Badge } from "@/components/ui/badge";
 import { ExecutionStatusBadge } from "@/components/workouts/execution-status";
@@ -136,7 +136,7 @@ export function SessionAthletes({
   editable,
 }: {
   sessionId: string;
-  assigned: (SelectableAthlete & { execution?: ExecutionStatus; discomfortCount?: number })[];
+  assigned: (SelectableAthlete & { execution?: ExecutionStatus; discomfortCount?: number; personalized?: boolean })[];
   /** Atletas activos que aún no están en la sesión. */
   assignable: SelectableAthlete[];
   editable: boolean;
@@ -217,6 +217,11 @@ export function SessionAthletes({
                 </span>
                 <span className="flex flex-wrap items-center gap-1.5">
                   {a.execution && <ExecutionStatusBadge status={a.execution} />}
+                  {a.personalized && (
+                    <Badge tone="info" icon={<UserCog aria-hidden />}>
+                      Personalizada
+                    </Badge>
+                  )}
                   {(a.discomfortCount ?? 0) > 0 && (
                     <Badge tone="warning" icon={<AlertTriangle aria-hidden />}>
                       {a.discomfortCount === 1 ? "1 molestia" : `${a.discomfortCount} molestias`}
@@ -234,9 +239,19 @@ export function SessionAthletes({
                   </ButtonLink>
                 ) : (
                   editable && (
-                    <Button variant="ghost" onClick={() => setRemoving(a)} icon={<UserMinus aria-hidden className="size-4" />} aria-label={`Quitar a ${a.name} de la sesión`}>
-                      Quitar
-                    </Button>
+                    <span className="flex flex-wrap gap-1">
+                      <ButtonLink
+                        href={`/coach/sesiones/${sessionId}/atletas/${a.athleteId}/personalizar`}
+                        variant="ghost"
+                        icon={<UserCog aria-hidden className="size-4" />}
+                        aria-label={`Personalizar para ${a.name}`}
+                      >
+                        Personalizar
+                      </ButtonLink>
+                      <Button variant="ghost" onClick={() => setRemoving(a)} icon={<UserMinus aria-hidden className="size-4" />} aria-label={`Quitar a ${a.name} de la sesión`}>
+                        Quitar
+                      </Button>
+                    </span>
                   )
                 )}
               </li>

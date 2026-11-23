@@ -29,6 +29,11 @@
 //                   con estado leído, resolución automática (resolved_at) e
 //                   historial (atleta y sesión con SET NULL y copia del nombre)
 //                   — ver prisma/schema.prisma.
+//   [FASE 10]       personalización: AssignmentOverride (assignment_overrides),
+//                   un ajuste por asignación y posición del snapshot, con
+//                   sustitución congelada, omisión, "sin carga" y auditoría
+//                   (created_by/updated_by). Reemplaza el campo "overrides Json?"
+//                   previsto en Assignment — ver prisma/schema.prisma.
 //   [FUTURO]        diseño previsto; puede cambiar al implementarse.
 //
 // Separación obligatoria del dominio (CLAUDE.md):
@@ -269,7 +274,7 @@ model Assignment {
   sessionId String           @db.Uuid
   athleteId String           @db.Uuid // → AthleteProfile
   status    AssignmentStatus
-  overrides Json? // ajustes individuales sobre el snapshot
+  overrides Json? // [FASE 10] implementado como tabla relacional assignment_overrides
 
   log SessionLog?
 

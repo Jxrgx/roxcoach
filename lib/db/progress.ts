@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db/prisma";
 import { Prisma } from "@/lib/generated/prisma/client";
-import { parseSnapshot, type SessionSnapshotV1 } from "@/lib/scheduling/snapshot";
+import { effectivePlan, OVERRIDE_SELECT } from "@/lib/db/overrides";
 import type { ProgressRecord } from "@/lib/progress/metrics";
 
 /**
@@ -13,12 +13,13 @@ import type { ProgressRecord } from "@/lib/progress/metrics";
  * canceladas (las funciones puras lo vuelven a excluir por seguridad).
  */
 
-const EMPTY_SNAPSHOT: SessionSnapshotV1 = { version: 1, templateName: "", focus: null, intensity: "media", estimatedMinutes: null, blocks: [] };
 
 const PROGRESS_SELECT = {
   athleteId: true,
   status: true,
   session: { select: { id: true, title: true, scheduledDate: true, status: true, snapshot: true } },
+  // Plan personalizado del atleta (fase 10): marcas, evolución y omitidos usan su versión.
+  overrides: { select: OVERRIDE_SELECT },
   log: {
     select: {
       status: true,
@@ -53,7 +54,7 @@ type Row = Prisma.AssignmentGetPayload<{ select: typeof PROGRESS_SELECT }>;
 const hasSession = (row: Row) => (row as { session: Row["session"] | null }).session !== null;
 
 function toRecord(a: Row): ProgressRecord {
-  const snapshot = parseSnapshot(a.session.snapshot) ?? EMPTY_SNAPSHOT;
+  const snapshot = effectivePlan(a.session.snapshot, a.overrides);
   return {
     sessionId: a.session.id,
     title: a.session.title,

@@ -1,7 +1,8 @@
 import "server-only";
 
 import { db } from "@/lib/db/prisma";
-import { parseSnapshot, type SessionSnapshotV1 } from "@/lib/scheduling/snapshot";
+import { effectivePlan, OVERRIDE_SELECT } from "@/lib/db/overrides";
+import type { EffectivePlan } from "@/lib/overrides/apply";
 import { closedPauseSeconds, isValidPosition, type ExecutionStatus, type LoggedSet, type SetPosition } from "@/lib/execution/progress";
 import type { DiscomfortIntensityValue, DiscomfortZoneValue } from "@/lib/execution/discomfort";
 import type { SetLogValue } from "@/lib/validations";
@@ -38,14 +39,14 @@ export interface ExecutionDTO {
   title: string;
   date: string;
   sessionStatus: "programada" | "cancelada";
-  snapshot: SessionSnapshotV1;
+  /** Plan EFECTIVO del atleta: snapshot + sus ajustes (con el original de cada ejercicio). */
+  snapshot: EffectivePlan;
   log: ExecutionLogDTO | null;
   sets: LoggedSet[];
   discomforts: DiscomfortDTO[];
 }
 
 const keyOf = (d: Date) => d.toISOString().slice(0, 10);
-const EMPTY_SNAPSHOT: SessionSnapshotV1 = { version: 1, templateName: "", focus: null, intensity: "media", estimatedMinutes: null, blocks: [] };
 
 const LOG_INCLUDE = {
   sets: { orderBy: [{ blockIndex: "asc" as const }, { exerciseIndex: "asc" as const }, { setNumber: "asc" as const }] },
@@ -57,11 +58,14 @@ function loadLog(assignmentId: string) {
   return db().sessionLog.findUnique({ where: { assignmentId }, include: LOG_INCLUDE });
 }
 
+type OverrideRows = Parameters<typeof effectivePlan>[1];
+
 function toExecution(
   session: { id: string; title: string; scheduledDate: Date; status: "programada" | "cancelada"; snapshot: unknown },
   log: LogRow,
+  overrides: OverrideRows,
 ): ExecutionDTO {
-  const snapshot = parseSnapshot(session.snapshot) ?? EMPTY_SNAPSHOT;
+  const snapshot = effectivePlan(session.snapshot, overrides);
   return {
     sessionId: session.id,
     title: session.title,
@@ -110,6 +114,7 @@ async function findAssignment(athleteId: string, sessionId: string) {
     select: {
       id: true,
       session: { select: { id: true, title: true, scheduledDate: true, status: true, snapshot: true } },
+      overrides: { select: OVERRIDE_SELECT },
     },
   });
 }
@@ -118,7 +123,7 @@ async function findAssignment(athleteId: string, sessionId: string) {
 export async function findAthleteExecution(athleteId: string, sessionId: string): Promise<ExecutionDTO | null> {
   const assignment = await findAssignment(athleteId, sessionId);
   if (!assignment) return null;
-  return toExecution(assignment.session, await loadLog(assignment.id));
+  return toExecution(assignment.session, await loadLog(assignment.id), assignment.overrides);
 }
 
 export type StartResult = { ok: true } | { ok: false; reason: "not-found" | "cancelled" | "future" };
@@ -135,14 +140,14 @@ export async function startExecution(athleteId: string, sessionId: string, today
   return { ok: true };
 }
 
-type InProgress = { ok: true; logId: string; snapshot: SessionSnapshotV1; pausedAt: Date | null } | { ok: false; reason: "not-found" | "not-in-progress" };
+type InProgress = { ok: true; logId: string; snapshot: EffectivePlan; pausedAt: Date | null } | { ok: false; reason: "not-found" | "not-in-progress" };
 
 async function findInProgress(athleteId: string, sessionId: string): Promise<InProgress> {
   const assignment = await findAssignment(athleteId, sessionId);
   if (!assignment) return { ok: false, reason: "not-found" };
   const log = await db().sessionLog.findUnique({ where: { assignmentId: assignment.id }, select: { id: true, status: true, pausedAt: true } });
   if (!log || log.status !== "en_curso") return { ok: false, reason: "not-in-progress" };
-  return { ok: true, logId: log.id, snapshot: parseSnapshot(assignment.session.snapshot) ?? EMPTY_SNAPSHOT, pausedAt: log.pausedAt };
+  return { ok: true, logId: log.id, snapshot: effectivePlan(assignment.session.snapshot, assignment.overrides), pausedAt: log.pausedAt };
 }
 
 export type LogSetResult = { ok: true; set: LoggedSet } | { ok: false; reason: "not-found" | "not-in-progress" | "paused" | "invalid-position" };
@@ -226,7 +231,7 @@ export async function reportDiscomfort(
   if (!assignment) return false;
   const log = await db().sessionLog.findUnique({ where: { assignmentId: assignment.id }, select: { id: true } });
   if (!log) return false;
-  const snapshot = parseSnapshot(assignment.session.snapshot) ?? EMPTY_SNAPSHOT;
+  const snapshot = effectivePlan(assignment.session.snapshot, assignment.overrides);
   const hasExercise =
     value.blockIndex !== null && value.exerciseIndex !== null && !!snapshot.blocks[value.blockIndex]?.exercises[value.exerciseIndex];
   await db().discomfortReport.create({
@@ -258,11 +263,12 @@ export async function findAthleteExecutionForCoach(coachId: string, sessionId: s
       status: true,
       athlete: { select: { profile: { select: { name: true } } } },
       session: { select: { id: true, title: true, scheduledDate: true, status: true, snapshot: true } },
+      overrides: { select: OVERRIDE_SELECT },
     },
   });
   if (!assignment?.athlete?.profile) return null;
   const log = await loadLog(assignment.id);
   // Un atleta retirado sin registro no tiene resultados que mostrar.
   if (assignment.status !== "asignada" && !log) return null;
-  return { ...toExecution(assignment.session, log), athleteId, athleteName: assignment.athlete.profile.name };
+  return { ...toExecution(assignment.session, log, assignment.overrides), athleteId, athleteName: assignment.athlete.profile.name };
 }

@@ -38,13 +38,20 @@ export interface ActualSet {
 
 export interface LoggedSet extends SetPosition, ActualSet {}
 
+/** Ejercicio omitido para el atleta (plan efectivo de la fase 10). */
+export const isSkipped = (ex: SnapshotExercise) => (ex as { skipped?: boolean }).skipped === true;
+
 export const slotKey = (p: SetPosition) => `${p.blockIndex}.${p.exerciseIndex}.${p.setNumber}`;
 
-/** Todas las series en orden: bloque → ejercicio → serie. */
+/**
+ * Todas las series en orden: bloque → ejercicio → serie. Con un plan
+ * personalizado, usa sus series y deja fuera los ejercicios omitidos (no son
+ * series pendientes). Las posiciones siguen siendo las del snapshot.
+ */
 export function setSlots(snap: SessionSnapshotV1): SetSlot[] {
   return snap.blocks.flatMap((b, blockIndex) =>
     b.exercises.flatMap((exercise, exerciseIndex) =>
-      Array.from({ length: exercise.sets }, (_, i) => ({
+      Array.from({ length: isSkipped(exercise) ? 0 : exercise.sets }, (_, i) => ({
         blockIndex,
         exerciseIndex,
         setNumber: i + 1,
@@ -59,7 +66,7 @@ export function setSlots(snap: SessionSnapshotV1): SetSlot[] {
 /** ¿Existe esa posición en el snapshot? (también lo revisa la BD). */
 export function isValidPosition(snap: SessionSnapshotV1, p: SetPosition): boolean {
   const ex = snap.blocks[p.blockIndex]?.exercises[p.exerciseIndex];
-  return !!ex && Number.isInteger(p.setNumber) && p.setNumber >= 1 && p.setNumber <= ex.sets;
+  return !!ex && !isSkipped(ex) && Number.isInteger(p.setNumber) && p.setNumber >= 1 && p.setNumber <= ex.sets;
 }
 
 /**
@@ -107,6 +114,8 @@ export interface ExerciseSummary {
   blockIndex: number;
   exerciseIndex: number;
   exercise: SnapshotExercise;
+  /** Omitido para el atleta: sus series no cuentan (ni como pendientes ni como no realizadas). */
+  skipped: boolean;
   sets: { setNumber: number; actual: ActualSet | null }[];
 }
 
@@ -131,7 +140,8 @@ export function summarize(snap: SessionSnapshotV1, logs: LoggedSet[]): SessionSu
       blockIndex,
       exerciseIndex,
       exercise,
-      sets: Array.from({ length: exercise.sets }, (_, i) => {
+      skipped: isSkipped(exercise),
+      sets: Array.from({ length: isSkipped(exercise) ? 0 : exercise.sets }, (_, i) => {
         const log = byKey.get(slotKey({ blockIndex, exerciseIndex, setNumber: i + 1 }));
         return {
           setNumber: i + 1,

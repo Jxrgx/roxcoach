@@ -58,12 +58,14 @@ model CoachProfile {
   distanceUnit DistanceUnit @default(km) @map("distance_unit")
   updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  athletes    CoachAthlete[]
-  invitations Invitation[]
-  exercises   Exercise[]
-  templates   WorkoutTemplate[]
-  sessions    ScheduledSession[]
-  alerts      CoachAlert[]
+  athletes         CoachAthlete[]
+  invitations      Invitation[]
+  exercises        Exercise[]
+  templates        WorkoutTemplate[]
+  sessions         ScheduledSession[]
+  alerts           CoachAlert[]
+  overridesCreated AssignmentOverride[] @relation("OverrideCreatedBy")
+  overridesUpdated AssignmentOverride[] @relation("OverrideUpdatedBy")
 
   @@map("coach_profiles")
 }
@@ -201,9 +203,10 @@ model Exercise {
   createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  substitutions ExerciseSubstitution[] @relation("ExerciseSubstitutions")
-  substituteOf  ExerciseSubstitution[] @relation("SubstituteExercises")
-  blockItems    BlockExercise[]
+  substitutions        ExerciseSubstitution[] @relation("ExerciseSubstitutions")
+  substituteOf         ExerciseSubstitution[] @relation("SubstituteExercises")
+  blockItems           BlockExercise[]
+  overrideReplacements AssignmentOverride[]   @relation("OverrideReplacement")
 
   @@index([coachId, archivedAt])
   @@index([category])
@@ -369,7 +372,9 @@ model Assignment {
   updatedAt DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   /// Registro realizado (fase 7). Nunca modifica el snapshot.
-  log SessionLog?
+  log       SessionLog?
+  /// Ajustes individuales sobre el snapshot (fase 10). Nunca modifican el snapshot.
+  overrides AssignmentOverride[]
 
   @@unique([sessionId, athleteId])
   @@index([athleteId, status])
@@ -520,4 +525,49 @@ model CoachAlert {
   @@unique([coachId, kind, sourceId])
   @@index([coachId, readAt])
   @@map("coach_alerts")
+}
+
+// ============================================================================
+// Personalización por atleta (fase 10). Un ajuste por asignación y elemento del
+// snapshot (posición bloque/ejercicio). Nunca modifica la plantilla ni el
+// snapshot; se bloquea en la BD en cuanto el atleta comienza la sesión.
+// ============================================================================
+
+model AssignmentOverride {
+  id                      String            @id @default(uuid()) @db.Uuid
+  assignmentId            String            @map("assignment_id") @db.Uuid
+  assignment              Assignment        @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  /// Posición del ejercicio en el snapshot (la misma que usan set_logs).
+  blockIndex              Int               @map("block_index")
+  exerciseIndex           Int               @map("exercise_index")
+  /// Omitido para este atleta: no aparece como serie pendiente.
+  skipped                 Boolean           @default(false)
+  overrideSets            Int?              @map("override_sets")
+  /// Solo el objetivo del mismo tipo que el plan original (reps, distancia o tiempo).
+  overrideReps            Int?              @map("override_reps")
+  overrideDistanceMeters  Int?              @map("override_distance_meters")
+  overrideDurationSeconds Int?              @map("override_duration_seconds")
+  overrideLoadKg          Float?            @map("override_load_kg")
+  /// "Sin carga": quita la carga planeada para este atleta.
+  removeLoad              Boolean           @default(false) @map("remove_load")
+  overrideRestSeconds     Int?              @map("override_rest_seconds")
+  /// Nota para el atleta (también el motivo de una sustitución).
+  note                    String?
+  /// Sustitución: referencia a la biblioteca + copia congelada (no cambia si la biblioteca cambia).
+  replacementExerciseId   String?           @map("replacement_exercise_id") @db.Uuid
+  replacementExercise     Exercise?         @relation("OverrideReplacement", fields: [replacementExerciseId], references: [id], onDelete: SetNull)
+  replacementName         String?           @map("replacement_name")
+  replacementCategory     ExerciseCategory? @map("replacement_category")
+  replacementEquipment    String[]          @default([]) @map("replacement_equipment")
+  /// Auditoría básica: quién creó y quién modificó por última vez.
+  createdById             String?           @map("created_by") @db.Uuid
+  createdBy               CoachProfile?     @relation("OverrideCreatedBy", fields: [createdById], references: [profileId], onDelete: SetNull)
+  updatedById             String?           @map("updated_by") @db.Uuid
+  updatedBy               CoachProfile?     @relation("OverrideUpdatedBy", fields: [updatedById], references: [profileId], onDelete: SetNull)
+  createdAt               DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([assignmentId, blockIndex, exerciseIndex])
+  @@index([replacementExerciseId])
+  @@map("assignment_overrides")
 }
