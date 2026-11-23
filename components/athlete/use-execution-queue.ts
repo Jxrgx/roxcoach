@@ -26,18 +26,27 @@ const RETRY_MS = 15_000;
  * Cola local de la ejecución: guarda cada operación en IndexedDB antes de
  * enviarla, la envía en orden cuando hay conexión y aplica las respuestas.
  * `onResults` recibe lo que confirmó el servidor (series y pausas).
+ *
+ * `autoFlush: false` (pantalla restaurada en el shell offline): solo guarda en
+ * IndexedDB y NO envía al volver la red. El shell carga entonces la ruta real,
+ * cuya cola envía todo en orden. Si ambas enviaran, la recarga del shell podía
+ * cancelar la navegación al resumen tras finalizar y la ruta real quedaba sin
+ * nada pendiente que la llevara ahí (fase 14).
  */
 export function useExecutionQueue({
   userId,
   sessionId,
   onResults,
   onLoaded,
+  autoFlush = true,
 }: {
   userId: string;
   sessionId: string;
   onResults: (results: OpResult[]) => void;
   /** Al terminar de leer lo guardado (para retomar la serie y el descanso). */
   onLoaded?: (ops: QueuedOp[], store: ExecutionStore) => void;
+  /** Enviar automáticamente al cargar, al recuperar la red y al encolar. */
+  autoFlush?: boolean;
 }) {
   const online = useOnline();
   const [ops, setOps] = useState<QueuedOp[]>([]);
@@ -131,22 +140,22 @@ export function useExecutionQueue({
 
   // Al cargar o al recuperar la conexión, enviar lo pendiente; reintentar periódicamente.
   useEffect(() => {
-    if (!loaded || !online) return;
+    if (!loaded || !online || !autoFlush) return;
     void flush();
     const id = window.setInterval(() => {
       if (pendingCount(opsRef.current) > 0) void flush();
     }, RETRY_MS);
     return () => window.clearInterval(id);
-  }, [loaded, online, flush]);
+  }, [loaded, online, flush, autoFlush]);
 
   const enqueue = useCallback(
     async (kind: OpKind, extra: Pick<QueuedOp, "position" | "input" | "expect" | "preview"> = {}) => {
       const op = createOp({ userId, sessionId, seq: nextSeq(opsRef.current), kind, now: new Date() }, extra);
       await commit([...opsRef.current, op]);
-      void flush();
+      if (autoFlush) void flush();
       return op;
     },
-    [commit, flush, sessionId, userId],
+    [autoFlush, commit, flush, sessionId, userId],
   );
 
   const discard = useCallback(async (opId: string) => commit(opsRef.current.filter((o) => o.opId !== opId)), [commit]);

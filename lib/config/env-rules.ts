@@ -28,6 +28,7 @@ export const ENV_VARS: readonly EnvVarSpec[] = [
   { name: "APP_URL", scope: "server", requiredInProduction: true, secret: false, description: "Origen público de la app (enlaces de correo e invitación)." },
   { name: "ALLOWED_ORIGINS", scope: "server", requiredInProduction: false, secret: false, description: "Orígenes extra permitidos, separados por coma." },
   { name: "ROXCOACH_CATALOG", scope: "server", requiredInProduction: false, secret: false, description: "Habilita /componentes. Nunca en producción." },
+  { name: "ROXCOACH_DB_TRACE", scope: "server", requiredInProduction: false, secret: false, description: "Registra las consultas (SQL parametrizado, sin valores) para medir. Nunca en producción." },
   { name: "DIRECT_URL", scope: "migrations", requiredInProduction: false, secret: true, description: "Conexión directa para prisma migrate deploy." },
   { name: "SUPABASE_SECRET_KEY", scope: "tests", requiredInProduction: false, secret: true, description: "Solo pruebas E2E (crea usuarios de prueba)." },
   { name: "E2E_COACH_EMAIL", scope: "tests", requiredInProduction: false, secret: false, description: "Coach de prueba." },
@@ -104,8 +105,13 @@ export function validateEnv(env: Record<string, string | undefined>, mode: "deve
     const bad = env.ALLOWED_ORIGINS!.split(",").filter((o) => o.trim() !== "" && !parseOrigin(o));
     if (bad.length > 0) problems.push({ name: "ALLOWED_ORIGINS", reason: `${bad.length} origen(es) inválido(s)` });
   }
-  if (mode === "production" && has("ROXCOACH_CATALOG") && !isLocalOrigin(parseOrigin(env.APP_URL) ?? "https://x.invalid")) {
+  // Herramientas de desarrollo y medición: solo en local (también al probar el build).
+  const local = isLocalOrigin(parseOrigin(env.APP_URL) ?? "https://x.invalid");
+  if (mode === "production" && has("ROXCOACH_CATALOG") && !local) {
     problems.push({ name: "ROXCOACH_CATALOG", reason: "el catálogo de componentes no debe activarse en producción" });
+  }
+  if (mode === "production" && has("ROXCOACH_DB_TRACE") && !local) {
+    problems.push({ name: "ROXCOACH_DB_TRACE", reason: "la traza de consultas es solo para medir en local" });
   }
   // Un secreto con prefijo público terminaría en el bundle del navegador.
   for (const name of Object.keys(env)) {

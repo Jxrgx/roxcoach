@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { expect as baseExpect, test, type Browser, type Page } from "@playwright/test";
+import { type Browser, type Page } from "@playwright/test";
+import { expect as baseExpect, test } from "./fixtures";
 import { createClient } from "@supabase/supabase-js";
 import { ATHLETE_STATE, collectErrors, dbQuery, e2eEnv, horizontalOverflow, loginViaUi, smallTargets } from "./helpers";
+import { TestData } from "./cleanup";
 
 /**
  * Avisos operativos (fase 9). Cada prueba crea su PROPIO coach y sus atletas:
@@ -27,15 +29,17 @@ function admin() {
   return createClient(env.supabaseUrl, env.secretKey, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-const createdUsers: string[] = [];
-
-test.afterEach(async () => {
-  // Borrar al coach elimina en cascada sus sesiones, asignaciones, registros y avisos.
-  for (const id of createdUsers.splice(0)) {
-    const { error } = await admin().auth.admin.deleteUser(id);
-    if (error && !/not.*found/i.test(error.message)) throw new Error(`No se pudo borrar el usuario de prueba: ${error.message}`);
-  }
+/**
+ * Datos creados por la prueba en curso, por id exacto (tests/e2e/cleanup.ts).
+ * Todo cuelga del coach y atletas que crea la prueba: se borran sus sesiones
+ * (cascada: asignaciones, registros, ajustes, ops), luego sus avisos y al final
+ * los usuarios. Corre en afterEach aunque la prueba falle o agote el tiempo.
+ */
+let data: TestData;
+test.beforeEach(() => {
+  data = new TestData();
 });
+test.afterEach(() => data.cleanup());
 
 const SNAPSHOT = JSON.stringify({
   version: 1,
@@ -55,10 +59,10 @@ const SNAPSHOT = JSON.stringify({
 async function createUser(role: "coach" | "athlete", name: string) {
   const email = `${role}.avisos.${Date.now()}.${Math.random().toString(36).slice(2, 7)}@example.com`;
   const password = `E2e-${randomBytes(9).toString("base64url")}`;
-  const { data, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name, role } });
-  if (error || !data.user) throw error ?? new Error("No se creó el usuario");
-  createdUsers.push(data.user.id);
-  return { id: data.user.id, name, email, password };
+  const { data: created, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name, role } });
+  if (error || !created.user) throw error ?? new Error("No se creó el usuario");
+  data.users.push(created.user.id);
+  return { id: created.user.id, name, email, password };
 }
 
 async function link(coachId: string, athleteId: string) {
@@ -85,6 +89,7 @@ async function addSession(
     `insert into scheduled_sessions (id, coach_id, title, scheduled_date, snapshot) values (gen_random_uuid(), $1, $2, $3, $4) returning id`,
     [coachId, title, date, SNAPSHOT],
   );
+  data.sessions.push(s!.id);
   const [a] = await dbQuery<{ id: string }>(`insert into assignments (id, session_id, athlete_id) values (gen_random_uuid(), $1, $2) returning id`, [s!.id, athleteId]);
   if (o.done) {
     const started = new Date(Date.now() - 2 * 3600_000);

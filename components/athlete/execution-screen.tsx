@@ -90,6 +90,8 @@ export function ExecutionScreen({ sessionId, userId, title, snapshot, unit, log,
     userId,
     sessionId,
     onResults,
+    // Restaurada sin red: la ruta real (que el shell carga al volver la red) es la que envía.
+    autoFlush: !restored,
     // Al cargar lo guardado: ubicar la siguiente serie pendiente y retomar un descanso en curso.
     onLoaded: (ops, store) => {
       const next = nextPendingIndex(slots, new Set(mergeSets(sets, ops).keys()));

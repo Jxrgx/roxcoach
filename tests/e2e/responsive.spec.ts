@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { ATHLETE_STATE, COACH_STATE, collectErrors, horizontalOverflow, readSeedIds, smallTargets, truncatedNavLabels } from "./helpers";
 
 /** Sesión con la que se visita cada ruta (las áreas están protegidas por rol). */

@@ -21,6 +21,7 @@ Reglas:
 - Node.js **22 LTS** recomendado (mínimo 20.9, el `engines` de `package.json`; desarrollo probado con Node 24).
 - npm (el repositorio usa `package-lock.json`).
 - HTTPS en staging y producción (lo da el proveedor o un proxy inverso).
+- **Misma región que Supabase.** Despliega el servidor de la app en la región del proyecto de Supabase (Project Settings → General → Region). Cada página hace algunas consultas en secuencia: con ~100 ms por viaje de red (otra región), la navegación tarda segundos; en la misma región son milisegundos. Es el factor de rendimiento más grande (ver `docs/architecture.md` → Rendimiento).
 
 ## 3. Variables por ambiente
 

@@ -11,12 +11,15 @@
     "test": "node scripts/run-vitest.mjs run",
     "test:watch": "node scripts/run-vitest.mjs",
     "test:e2e": "playwright test",
+    "check:instant": "node scripts/check-instant.mjs",
+    "measure:nav": "node scripts/measure-navigation.mjs",
     "validate": "npm run lint && npm run typecheck && npm run test && npm run build",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:status": "prisma migrate status",
     "db:audit": "node scripts/db-audit.mjs",
+    "db:residue": "node scripts/test-residue.mjs",
     "db:studio": "prisma studio"
   },
   "dependencies": {

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Clock, ListChecks } from "lucide-react";
@@ -11,16 +12,26 @@ import { DiscomfortList, ExecutionProgress, ExecutionResults } from "@/component
 import { SessionFeedbackForm } from "@/components/athlete/session-feedback-form";
 import { ReportDiscomfortButton } from "@/components/athlete/report-discomfort-button";
 import { LocalLeftovers } from "@/components/athlete/local-leftovers";
+import { DetailSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Resumen" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** El contenido depende de la sesión y de la URL: llega detrás de Suspense (fase 14). */
+export default function SummaryPage({ params, searchParams }: PageProps<"/atleta/sesiones/[id]/resumen">) {
+  return (
+    <Suspense fallback={<DetailSkeleton label="Cargando resumen…" />}>
+      <SummaryPageContent params={params} searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
 /**
  * Resumen de una sesión finalizada: duración, series y planeado vs. realizado.
  * Nivel 1: enviar RPE general y comentario (lo único editable al terminar).
  */
-export default async function SummaryPage({ params, searchParams }: PageProps<"/atleta/sesiones/[id]/resumen">) {
+async function SummaryPageContent({ params, searchParams }: { params: PageProps<"/atleta/sesiones/[id]/resumen">["params"]; searchParams: PageProps<"/atleta/sesiones/[id]/resumen">["searchParams"] }) {
   const [{ id }, query, athlete] = await Promise.all([params, searchParams, requireAthlete()]);
   const execution = UUID_RE.test(id) ? await findAthleteExecution(athlete.id, id) : null;
   if (!execution) notFound();

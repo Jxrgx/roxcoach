@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { AlertTriangle, ChevronRight, PauseCircle, TrendingDown } from "lucide-react";
 import { requireCoach } from "@/lib/auth/session";
@@ -15,6 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { AdherenceCard } from "@/components/progress/progress-parts";
 import { ProgressFilters } from "@/components/progress/progress-filters";
+import { ContentSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Progreso" };
 
@@ -54,8 +56,12 @@ function AthleteRow({ row, period }: { row: AthleteProgressRow; period: Period }
           </span>
           <span className="text-lg font-bold tabular-nums text-ink">{a.rate === null ? "—" : `${percent(a.rate)}%`}</span>
         </div>
-        {a.rate !== null && <ProgressBar className="mt-1.5" value={percent(a.rate)} label={`Adherencia de ${row.name}`} size="sm" tone={row.low ? "warning" : "info"} />}
-        <p className="mt-2 text-sm text-muted">{row.lastCompletedDay ? `Última sesión completada: ${formatKeyShort(row.lastCompletedDay)}` : "Aún no completa sesiones"}</p>
+        {a.rate !== null && (
+          <ProgressBar className="mt-1.5" value={percent(a.rate)} label={`Adherencia de ${row.name}`} size="sm" tone={row.low ? "warning" : "info"} />
+        )}
+        <p className="mt-2 text-sm text-muted">
+          {row.lastCompletedDay ? `Última sesión completada: ${formatKeyShort(row.lastCompletedDay)}` : "Aún no completa sesiones"}
+        </p>
         <ChevronRight aria-hidden className="absolute top-1/2 right-3 size-5 -translate-y-1/2 text-muted group-hover:text-ink" />
       </Link>
     </li>
@@ -66,7 +72,18 @@ function AthleteRow({ row, period }: { row: AthleteProgressRow; period: Period }
  * Progreso del equipo: solo atletas que hoy pertenecen al coach (activos y en
  * pausa) y solo sesiones programadas por él. Filtros por periodo, atleta y estado.
  */
-export default async function CoachProgressPage({ searchParams }: PageProps<"/coach/progreso">) {
+export default function CoachProgressPage({ searchParams }: PageProps<"/coach/progreso">) {
+  return (
+    <>
+      <PageHeader title="Progreso" description="Adherencia y evolución de tus atletas con sus sesiones reales." />
+      <Suspense fallback={<ContentSkeleton label="Cargando progreso…" variant="cards" />}>
+        <ProgressContent searchParams={searchParams} />
+      </Suspense>
+    </>
+  );
+}
+
+async function ProgressContent({ searchParams }: { searchParams: PageProps<"/coach/progreso">["searchParams"] }) {
   const [coach, query] = await Promise.all([requireCoach(), searchParams]);
   const period = parsePeriod(query.periodo);
   const status = parseStatusFilter(query.estado);
@@ -89,65 +106,68 @@ export default async function CoachProgressPage({ searchParams }: PageProps<"/co
   );
 
   return (
-    <>
-      <PageHeader title="Progreso" description="Adherencia y evolución de tus atletas con sus sesiones reales." />
-      <ScreenStates
-        empty={{ title: "Aún no hay resultados registrados", description: "Cuando tus atletas completen sesiones, verás aquí su progreso." }}
-        loadingLabel="Cargando progreso…"
-        loadingVariant="cards"
-      >
-        {athletes.length === 0 ? (
-          <EmptyState
-            title="Todavía no tienes atletas"
-            description="El progreso se calcula con las sesiones que programas y tus atletas completan."
-            action={<ButtonLink href="/coach/atletas">Ir a Atletas</ButtonLink>}
-          />
-        ) : (
-          <div className="flex flex-col gap-5">
-            <ProgressFilters athletes={athletes} period={period} athleteId={athleteId} status={status} />
+    <ScreenStates
+      empty={{ title: "Aún no hay resultados registrados", description: "Cuando tus atletas completen sesiones, verás aquí su progreso." }}
+      loadingLabel="Cargando progreso…"
+      loadingVariant="cards"
+    >
+      {athletes.length === 0 ? (
+        <EmptyState
+          title="Todavía no tienes atletas"
+          description="El progreso se calcula con las sesiones que programas y tus atletas completan."
+          action={<ButtonLink href="/coach/atletas">Ir a Atletas</ButtonLink>}
+        />
+      ) : (
+        <div className="flex flex-col gap-5">
+          <ProgressFilters athletes={athletes} period={period} athleteId={athleteId} status={status} />
 
-            <AdherenceCard summary={overview.group} period={period} title={athleteId ? "Adherencia" : "Adherencia del grupo"} />
+          <AdherenceCard summary={overview.group} period={period} title={athleteId ? "Adherencia" : "Adherencia del grupo"} />
 
-            {(overview.lowCount > 0 || overview.discomfortCount > 0) && (
-              <section aria-labelledby="atencion" className="rounded-2xl border border-warning/40 bg-warning/10 p-4">
-                <h2 id="atencion" className="flex items-center gap-2 font-semibold text-ink">
-                  <AlertTriangle aria-hidden className="size-4 text-warning" />
-                  Requieren atención
-                </h2>
-                <ul className="mt-2 flex flex-col gap-1 text-sm">
-                  {overview.lowCount > 0 && (
-                    <li>
-                      <Link className="inline-flex min-h-11 items-center text-ink underline-offset-4 hover:underline" href={`/coach/progreso?periodo=${period}&estado=baja`}>
-                        {overview.lowCount === 1 ? "1 atleta" : `${overview.lowCount} atletas`} con baja adherencia (menos de 70%)
-                      </Link>
-                    </li>
-                  )}
-                  {overview.discomfortCount > 0 && (
-                    <li>
-                      <Link className="inline-flex min-h-11 items-center text-ink underline-offset-4 hover:underline" href={`/coach/progreso?periodo=${period}&estado=molestias`}>
-                        {overview.discomfortCount === 1 ? "1 atleta" : `${overview.discomfortCount} atletas`} con molestias · {PERIOD_LABEL[period].toLowerCase()}
-                      </Link>
-                    </li>
-                  )}
-                </ul>
-              </section>
-            )}
-
-            <section aria-labelledby="por-atleta">
-              <SectionHeader id="por-atleta" title="Por atleta" />
-              {overview.rows.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-line p-4 text-sm text-muted">Ningún atleta coincide con los filtros.</p>
-              ) : (
-                <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-                  {overview.rows.map((row) => (
-                    <AthleteRow key={row.athleteId} row={row} period={period} />
-                  ))}
-                </ul>
-              )}
+          {(overview.lowCount > 0 || overview.discomfortCount > 0) && (
+            <section aria-labelledby="atencion" className="rounded-2xl border border-warning/40 bg-warning/10 p-4">
+              <h2 id="atencion" className="flex items-center gap-2 font-semibold text-ink">
+                <AlertTriangle aria-hidden className="size-4 text-warning" />
+                Requieren atención
+              </h2>
+              <ul className="mt-2 flex flex-col gap-1 text-sm">
+                {overview.lowCount > 0 && (
+                  <li>
+                    <Link
+                      className="inline-flex min-h-11 items-center text-ink underline-offset-4 hover:underline"
+                      href={`/coach/progreso?periodo=${period}&estado=baja`}
+                    >
+                      {overview.lowCount === 1 ? "1 atleta" : `${overview.lowCount} atletas`} con baja adherencia (menos de 70%)
+                    </Link>
+                  </li>
+                )}
+                {overview.discomfortCount > 0 && (
+                  <li>
+                    <Link
+                      className="inline-flex min-h-11 items-center text-ink underline-offset-4 hover:underline"
+                      href={`/coach/progreso?periodo=${period}&estado=molestias`}
+                    >
+                      {overview.discomfortCount === 1 ? "1 atleta" : `${overview.discomfortCount} atletas`} con molestias · {PERIOD_LABEL[period].toLowerCase()}
+                    </Link>
+                  </li>
+                )}
+              </ul>
             </section>
-          </div>
-        )}
-      </ScreenStates>
-    </>
+          )}
+
+          <section aria-labelledby="por-atleta">
+            <SectionHeader id="por-atleta" title="Por atleta" />
+            {overview.rows.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-line p-4 text-sm text-muted">Ningún atleta coincide con los filtros.</p>
+            ) : (
+              <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                {overview.rows.map((row) => (
+                  <AthleteRow key={row.athleteId} row={row} period={period} />
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+    </ScreenStates>
   );
 }

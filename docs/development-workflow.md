@@ -53,6 +53,61 @@ O todo lo anterior, menos e2e: `npm run validate`.
 
 Además prueba los cinco estados de vista previa en cada pantalla con datos, y los diálogos en mobile. Las capturas se guardan en `test-results/screens/<ancho>/`.
 
+### Navegación instantánea y rendimiento (fase 14)
+
+- **Patrón de páginas:** la página es síncrona. La estructura va fuera de `<Suspense>` y los datos van dentro, en un componente async (ver `docs/architecture.md` → Rendimiento). Nunca hagas `await` de la sesión, de Prisma, de `params` o de `searchParams` en el nivel superior de una página o layout. Datos compartidos por varias secciones: un cargador con `cache()` de React.
+- **Waterfalls:** lanza en un mismo `Promise.all` las consultas independientes. Solo encadena cuando una necesita el resultado de otra (p. ej. sincronizar avisos antes de listarlos). No agregues niveles de `include` sin necesidad, ni traigas filas de otros usuarios para filtrarlas en memoria.
+- **`npm run check:instant`** recorre todas las rutas del coach y del atleta contra un `next dev` **ya en marcha** (por defecto `http://localhost:3000`; otro con `-- --base <url>`), por carga directa y por navegación cliente. Falla si aparece cualquier error de consola o de página, incluidas las validaciones "blocking-route" de Next, que solo existen en `next dev`.
+  - Clasificación: `console.error` y excepciones = **error**; `warning` = aviso listado; logs de Fast Refresh y React DevTools = se ignoran.
+  - Next solo permite un `next dev` por carpeta: el script usa el que tengas abierto.
+- **`npm run measure:nav`** mide las 9 navegaciones principales contra un servidor en marcha (`next start`, por defecto :3100): tiempo hasta la estructura, tiempo hasta los datos y peticiones RSC.
+  - Opciones:
+    - `-- --slow 1`: 4G lenta y CPU ×4;
+    - `-- --runs 5`;
+    - `-- --only perfil`;
+    - `-- --json salida.json`.
+  - **Para contar consultas por navegación:**
+    1. Arranca el servidor con `ROXCOACH_DB_TRACE=1`, que registra duración y SQL parametrizado (nunca valores) y que la validación del entorno rechaza en producción real.
+    2. Redirige su salida a un archivo.
+    3. Pásalo con `-- --serverlog <archivo>`.
+  - Ejemplo:
+    ```bash
+    npm run build
+    ROXCOACH_DB_TRACE=1 APP_URL=http://localhost:3100 npx next start -p 3100 > server.log 2>&1 &
+    npm run measure:nav -- --serverlog server.log
+    ```
+  - Mide antes y después de un cambio, con la misma máquina y red. Los números absolutos dependen de la distancia a la base de datos.
+- **Errores de consola en e2e:** todas las specs importan `test` y `expect` de `tests/e2e/fixtures.ts`. El fixture automático `consoleGuard`:
+  - hace fallar la prueba ante cualquier `console.error` o excepción de página, también en los contextos creados con `browser.newContext()`;
+  - no tiene filtro global. Si una prueba provoca errores a propósito (p. ej. corta la red), los declara con `consoleGuard.allow(/patrón/)` en esa prueba y comenta el motivo.
+- **`navigation.spec.ts`:**
+  - para cada módulo retrasa 2.5 s solo la respuesta de navegación (no el prefetch) y comprueba que el título de destino y un estado de carga aparecen antes que los datos;
+  - recorre todos los módulos seguidos;
+  - prueba la sesión expirada (lleva al login conservando el destino) y el rol incorrecto.
+
+### Datos de prueba y limpieza (cierre de la fase 14)
+
+- **Solo lo que la prueba crea, por id exacto.** Cada spec que escribe en la base de datos usa `TestData` (`tests/e2e/cleanup.ts`):
+  - registra los ids al crear (`insert … returning id`), o justo después, por claves únicas de la prueba acotadas a su coach dueño;
+  - borra en `test.afterEach`, que corre aunque la prueba falle o agote el tiempo.
+  - Nunca se borra por patrones (`like 'E2E%'`, `@example.com`, todos los avisos de un tipo) ni por los usuarios compartidos.
+- **Orden de la limpieza:**
+  1. Lo que genera avisos: invitaciones, sesiones, plantillas, ejercicios y relaciones.
+  2. Avisos, por usuarios creados y por origen exacto (`source_id` = asignaciones e invitaciones de la prueba).
+  3. Usuarios.
+  4. Una última pasada de avisos por origen.
+
+  Así una sincronización en paralelo no deja avisos huérfanos. Antes ocurría con "no iniciada" y con "nuevo atleta".
+- **Límites:** cada borrado va en una transacción y **falla con ROLLBACK** si afecta más filas de las esperadas. `TestData` se niega a borrar a los usuarios compartidos (`tests/e2e/.auth/ids.json`).
+- **`athletes.spec`:** ya no cancela invitaciones como "limpieza". Borra por id cada invitación que crea (regenerar actualiza la misma fila) y sus avisos `relacion_aceptada`.
+- **`npm run db:residue`** (solo lectura): conteos por tabla, usuarios compartidos intactos e ids de posibles residuos. Ejecútalo antes y después de una corrida: los conteos no deben subir. Admite `-- --json archivo`.
+- **Residuos históricos (no se borran sin autorización):** invitaciones de corridas anteriores a esta corrección y 5 avisos huérfanos listados en el reporte del cierre de la fase 14.
+- **`http-status.spec.ts`:** verifica estado HTTP, URL final, UI y consola en estos casos:
+  - sin sesión, sesión alterada, rol incorrecto, `?next` externo;
+  - ruta inexistente;
+  - detalles inexistentes, mal formados y **ajenos** (atleta, sesión, ejercicio de otro coach);
+  - lo propio en 200.
+
 > **Windows.** `npm test` usa `scripts/run-vitest.mjs`, que normaliza la letra de unidad (`c:` → `C:`). Sin esto, Vitest carga dos instancias de su runner cuando la terminal abre el proyecto en minúscula y falla con "failed to find the current suite".
 
 ## Validación visual

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Lock, UserCog } from "lucide-react";
@@ -8,17 +9,33 @@ import { applyOverrides, describeChanges, formItemFor, LOCK_MESSAGE } from "@/li
 import { formatKeyLong } from "@/lib/scheduling/dates";
 import { ScreenStates } from "@/components/shared/screen-states";
 import { OverrideEditor } from "@/components/coach/override-editor";
+import { DetailSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Personalizar sesión" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** El detalle depende de la URL y de la sesión: todo llega detrás de Suspense con la forma de la pantalla. */
+export default function PersonalizePage(props: PageProps<"/coach/sesiones/[id]/atletas/[athleteId]/personalizar">) {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-3xl">
+          <DetailSkeleton label="Cargando personalización…" />
+        </div>
+      }
+    >
+      <PersonalizeContent {...props} />
+    </Suspense>
+  );
+}
 
 /**
  * Personalización de UNA asignación (fase 10). Solo el coach dueño de la
  * sesión y con relación activa; bloqueada si el atleta ya comenzó, la sesión
  * se canceló o el atleta fue retirado. La plantilla y el snapshot no cambian.
  */
-export default async function PersonalizePage({ params }: PageProps<"/coach/sesiones/[id]/atletas/[athleteId]/personalizar">) {
+async function PersonalizeContent({ params }: PageProps<"/coach/sesiones/[id]/atletas/[athleteId]/personalizar">) {
   const [{ id, athleteId }, coach] = await Promise.all([params, requireCoach()]);
   const target = UUID_RE.test(id) && UUID_RE.test(athleteId) ? await findAssignmentForOverride(coach.id, id, athleteId) : null;
   if (!target) notFound();
@@ -47,10 +64,7 @@ export default async function PersonalizePage({ params }: PageProps<"/coach/sesi
         )}
       </header>
 
-      <ScreenStates
-        empty={{ title: "Esta sesión no tiene ejercicios", description: "No hay nada que personalizar." }}
-        loadingLabel="Cargando personalización…"
-      >
+      <ScreenStates empty={{ title: "Esta sesión no tiene ejercicios", description: "No hay nada que personalizar." }} loadingLabel="Cargando personalización…">
         {target.lock !== "editable" ? (
           <div className="flex flex-col gap-4">
             <p role="status" className="flex items-start gap-2.5 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm text-ink">

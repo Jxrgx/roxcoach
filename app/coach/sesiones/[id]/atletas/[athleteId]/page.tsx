@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
@@ -11,17 +12,33 @@ import { formatClock } from "@/lib/utils/format";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ExecutionStatusBadge } from "@/components/workouts/execution-status";
 import { DiscomfortList, ExecutionProgress, ExecutionResults } from "@/components/workouts/execution-results";
+import { DetailSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Resultados" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** El detalle depende de la URL y de la sesión: todo llega detrás de Suspense con la forma de la pantalla. */
+export default function AthleteResultsPage(props: PageProps<"/coach/sesiones/[id]/atletas/[athleteId]">) {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-3xl">
+          <DetailSkeleton label="Cargando resultados…" />
+        </div>
+      }
+    >
+      <AthleteResultsContent {...props} />
+    </Suspense>
+  );
+}
 
 /**
  * Resultados de un atleta en una sesión del coach (solo lectura).
  * Primero lo que pide atención (molestias), luego RPE y comentario, y al
  * final el detalle planeado vs. realizado por bloque.
  */
-export default async function AthleteResultsPage({ params }: PageProps<"/coach/sesiones/[id]/atletas/[athleteId]">) {
+async function AthleteResultsContent({ params }: PageProps<"/coach/sesiones/[id]/atletas/[athleteId]">) {
   const [{ id, athleteId }, coach] = await Promise.all([params, requireCoach()]);
   const execution = UUID_RE.test(id) && UUID_RE.test(athleteId) ? await findAthleteExecutionForCoach(coach.id, id, athleteId) : null;
   if (!execution) notFound();
@@ -34,7 +51,10 @@ export default async function AthleteResultsPage({ params }: PageProps<"/coach/s
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
-      <Link href={`/coach/sesiones/${id}`} className="-ml-2 inline-flex min-h-11 items-center gap-1.5 self-start rounded-xl px-2 text-sm text-muted hover:text-ink">
+      <Link
+        href={`/coach/sesiones/${id}`}
+        className="-ml-2 inline-flex min-h-11 items-center gap-1.5 self-start rounded-xl px-2 text-sm text-muted hover:text-ink"
+      >
         <ArrowLeft aria-hidden className="size-4" />
         {execution.title}
       </Link>

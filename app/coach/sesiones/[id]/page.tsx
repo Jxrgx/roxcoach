@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarDays, CheckCircle2, StickyNote, XCircle } from "lucide-react";
@@ -11,12 +12,28 @@ import { ScreenStates } from "@/components/shared/screen-states";
 import { Badge } from "@/components/ui/badge";
 import { TemplatePreview } from "@/components/workouts/template-preview";
 import { SessionAthletes, SessionHeaderActions } from "@/components/coach/session-manage";
+import { DetailSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Sesión" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function CoachSessionPage({ params, searchParams }: PageProps<"/coach/sesiones/[id]">) {
+/** El detalle depende de la URL y de la sesión: todo llega detrás de Suspense con la forma de la pantalla. */
+export default function CoachSessionPage(props: PageProps<"/coach/sesiones/[id]">) {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-3xl">
+          <DetailSkeleton label="Cargando sesión…" />
+        </div>
+      }
+    >
+      <CoachSessionContent {...props} />
+    </Suspense>
+  );
+}
+
+async function CoachSessionContent({ params, searchParams }: PageProps<"/coach/sesiones/[id]">) {
   const [{ id }, query, coach] = await Promise.all([params, searchParams, requireCoach()]);
   // Una sesión de otro coach (o un id inválido) se ve igual que una inexistente.
   const session = UUID_RE.test(id) ? await findCoachSession(coach.id, id) : null;
@@ -75,10 +92,7 @@ export default async function CoachSessionPage({ params, searchParams }: PagePro
         <SessionAthletes sessionId={session.id} assigned={session.athletes} assignable={assignable} editable={!cancelled} />
       </div>
 
-      <ScreenStates
-        empty={{ title: "No encontramos esta sesión", description: "Recarga la página para intentarlo de nuevo." }}
-        loadingLabel="Cargando sesión…"
-      >
+      <ScreenStates empty={{ title: "No encontramos esta sesión", description: "Recarga la página para intentarlo de nuevo." }} loadingLabel="Cargando sesión…">
         {session.notes && (
           <p className="mb-4 flex items-start gap-2.5 rounded-2xl border border-line bg-surface p-4 text-sm whitespace-pre-line text-ink">
             <StickyNote aria-hidden className="mt-0.5 size-4 shrink-0 text-muted" />
@@ -88,7 +102,6 @@ export default async function CoachSessionPage({ params, searchParams }: PagePro
             </span>
           </p>
         )}
-
 
         <section aria-labelledby="sesion-congelada">
           <h2 id="sesion-congelada" className="sr-only">

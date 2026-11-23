@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Copy } from "lucide-react";
@@ -10,12 +11,24 @@ import { canEditTemplate } from "@/lib/workouts/rules";
 import { PageHeader } from "@/components/shared/page-header";
 import { TemplateStatusBadge } from "@/components/workouts/template-status";
 import { TemplateBuilder } from "@/components/coach/template-builder";
+import { DetailSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Editar plantilla" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function EditTemplatePage({ params, searchParams }: PageProps<"/coach/entrenamientos/[id]/editar">) {
+type Props = PageProps<"/coach/entrenamientos/[id]/editar">;
+
+/** El enlace de regreso y el encabezado dependen de la plantilla: todo llega detrás de Suspense. */
+export default function EditTemplatePage({ params, searchParams }: Props) {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-3xl"><DetailSkeleton label="Cargando plantilla…" /></div>}>
+      <EditTemplate params={params} searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function EditTemplate({ params, searchParams }: Pick<Props, "params" | "searchParams">) {
   const [{ id }, query, coach] = await Promise.all([params, searchParams, requireCoach()]);
   const template = UUID_RE.test(id) ? await findTemplateForCoach(coach.id, id) : null;
   // Las archivadas no se editan: primero se restauran.

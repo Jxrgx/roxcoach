@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Mail, PauseCircle } from "lucide-react";
@@ -13,12 +14,28 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { RelationActions } from "@/components/coach/relation-actions";
 import { AthleteSportsForm } from "@/components/coach/athlete-sports-form";
+import { DetailSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Atleta" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function CoachAthleteDetailPage({ params }: PageProps<"/coach/atletas/[id]">) {
+/** El detalle depende de la URL y de la sesión: todo llega detrás de Suspense con la forma de la pantalla. */
+export default function CoachAthleteDetailPage(props: PageProps<"/coach/atletas/[id]">) {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-3xl">
+          <DetailSkeleton label="Cargando atleta…" />
+        </div>
+      }
+    >
+      <CoachAthleteDetailContent {...props} />
+    </Suspense>
+  );
+}
+
+async function CoachAthleteDetailContent({ params }: PageProps<"/coach/atletas/[id]">) {
   const { id } = await params;
   const coach = await requireCoach();
   // Un atleta ajeno (o un id inválido) se ve exactamente igual que uno inexistente.
@@ -56,18 +73,14 @@ export default async function CoachAthleteDetailPage({ params }: PageProps<"/coa
             <PauseCircle aria-hidden className="mt-0.5 size-5 shrink-0 text-warning" />
             <p>
               La relación está en pausa
-              {athlete.pausedAt ? ` desde el ${formatShortDate(new Date(athlete.pausedAt), APP_TIME_ZONE)}` : ""}. Reactívala para
-              editar su información.
+              {athlete.pausedAt ? ` desde el ${formatShortDate(new Date(athlete.pausedAt), APP_TIME_ZONE)}` : ""}. Reactívala para editar su información.
             </p>
           </div>
         )}
 
         <Card className="mb-4">
           <h2 className="text-base font-semibold text-ink">Contacto</h2>
-          <a
-            href={`mailto:${athlete.email}`}
-            className="mt-2 inline-flex min-h-11 items-center gap-2 break-all text-electric hover:underline"
-          >
+          <a href={`mailto:${athlete.email}`} className="mt-2 inline-flex min-h-11 items-center gap-2 break-all text-electric hover:underline">
             <Mail aria-hidden className="size-4 shrink-0" />
             {athlete.email}
           </a>

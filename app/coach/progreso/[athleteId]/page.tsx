@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ChevronRight, PauseCircle } from "lucide-react";
@@ -14,16 +15,32 @@ import { SectionHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PeriodTabs } from "@/components/progress/progress-parts";
 import { ProgressOverview } from "@/components/progress/progress-overview";
+import { DetailSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Progreso del atleta" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** El detalle depende de la URL y de la sesión: todo llega detrás de Suspense con la forma de la pantalla. */
+export default function CoachAthleteProgressPage(props: PageProps<"/coach/progreso/[athleteId]">) {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-4xl">
+          <DetailSkeleton label="Cargando progreso del atleta…" />
+        </div>
+      }
+    >
+      <CoachAthleteProgressContent {...props} />
+    </Suspense>
+  );
+}
+
 /**
  * Progreso de un atleta del coach: solo si hoy le pertenece (activo o en
  * pausa) y solo con sesiones que programó este coach.
  */
-export default async function CoachAthleteProgressPage({ params, searchParams }: PageProps<"/coach/progreso/[athleteId]">) {
+async function CoachAthleteProgressContent({ params, searchParams }: PageProps<"/coach/progreso/[athleteId]">) {
   const [{ athleteId }, query, coach] = await Promise.all([params, searchParams, requireCoach()]);
   const athlete = UUID_RE.test(athleteId) ? (await listCoachProgressAthletes(coach.id)).find((a) => a.athleteId === athleteId) : undefined;
   if (!athlete) notFound();
@@ -41,7 +58,10 @@ export default async function CoachAthleteProgressPage({ params, searchParams }:
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <Link href={`/coach/progreso?periodo=${period}`} className="-ml-2 inline-flex min-h-11 items-center gap-1.5 self-start rounded-xl px-2 text-sm text-muted hover:text-ink">
+      <Link
+        href={`/coach/progreso?periodo=${period}`}
+        className="-ml-2 inline-flex min-h-11 items-center gap-1.5 self-start rounded-xl px-2 text-sm text-muted hover:text-ink"
+      >
         <ArrowLeft aria-hidden className="size-4" />
         Progreso del equipo
       </Link>

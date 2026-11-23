@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { CalendarCheck } from "lucide-react";
 import { requireAthlete } from "@/lib/auth/session";
 import { findInProgressAthleteSession, listAthleteSessions, listUpcomingAthleteSessions } from "@/lib/db/sessions";
@@ -9,18 +10,36 @@ import { StateMessage } from "@/components/ui/state-message";
 import { ButtonLink } from "@/components/ui/button";
 import { SessionCard } from "@/components/workouts/session-card";
 import { AthleteSessionDetail } from "@/components/athlete/athlete-session-detail";
+import { DetailSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Entrenamiento de hoy" };
 
-/** "Entrenamiento": la que quedó en curso; si no, la de hoy; si no hay, la próxima programada. */
-export default async function TodaySessionPage() {
+/**
+ * "Entrenamiento": la que quedó en curso; si no, la de hoy; si no hay, la próxima programada.
+ * El título depende de la sesión que se muestre, así que todo llega detrás de Suspense.
+ */
+export default function TodaySessionPage() {
+  return (
+    <Suspense fallback={<DetailSkeleton label="Cargando sesión…" />}>
+      <TodaySessionContent />
+    </Suspense>
+  );
+}
+
+async function TodaySessionContent() {
   const athlete = await requireAthlete();
   const today = todayKey(APP_TIME_ZONE);
-  const [inProgress, todaysAll] = await Promise.all([findInProgressAthleteSession(athlete.id), listAthleteSessions(athlete.id, today, today)]);
+  // Las tres en paralelo (antes "próxima" esperaba a las otras dos): una consulta de más
+  // cuando hay sesión hoy, a cambio de no encadenar otra ronda a la base de datos.
+  const [inProgress, todaysAll, upcoming] = await Promise.all([
+    findInProgressAthleteSession(athlete.id),
+    listAthleteSessions(athlete.id, today, today),
+    listUpcomingAthleteSessions(athlete.id, today, 1),
+  ]);
   const todays = todaysAll.filter((s) => s.status === "programada");
   // Primero la que está en curso; después la primera de hoy sin completar.
   const current = inProgress ?? todays.find((s) => s.execution !== "completada") ?? todays[0];
-  const next = current ? null : (await listUpcomingAthleteSessions(athlete.id, today, 1))[0];
+  const next = current ? null : upcoming[0];
 
   return (
     <ScreenStates

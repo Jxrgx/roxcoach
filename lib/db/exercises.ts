@@ -1,5 +1,6 @@
 import "server-only";
 
+import { CURRENT_RELATION, exerciseVisibleToAthlete, exerciseVisibleToCoach } from "@/lib/db/access-rules";
 import { db } from "@/lib/db/prisma";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import {
@@ -57,7 +58,7 @@ export interface ExerciseWriteData {
 
 export type ExerciseWriteResult = { ok: true; id: string } | { ok: false; reason: "not-found" | SubstitutionError };
 
-const visibleTo = (coachId: string): Prisma.ExerciseWhereInput => ({ OR: [{ coachId: null }, { coachId }] });
+const visibleTo = exerciseVisibleToCoach;
 
 const DETAIL_INCLUDE = {
   substitutions: { orderBy: { position: "asc" }, include: { substitute: { select: { id: true, name: true, category: true, archivedAt: true } } } },
@@ -121,9 +122,9 @@ export async function findExerciseForCoach(coachId: string, id: string): Promise
  * o en pausa), no archivados. Las sustituciones archivadas no se muestran.
  */
 export async function findExerciseForAthlete(athleteId: string, id: string): Promise<ExerciseDetailDTO | null> {
-  const relation = await db().coachAthlete.findFirst({ where: { athleteId, status: { in: ["active", "paused"] } }, select: { coachId: true } });
+  const relation = await db().coachAthlete.findFirst({ where: { athleteId, status: CURRENT_RELATION }, select: { coachId: true } });
   const e = await db().exercise.findFirst({
-    where: { id, archivedAt: null, OR: [{ coachId: null }, ...(relation ? [{ coachId: relation.coachId }] : [])] },
+    where: exerciseVisibleToAthlete(id, relation?.coachId ?? null),
     include: DETAIL_INCLUDE,
   });
   if (!e) return null;

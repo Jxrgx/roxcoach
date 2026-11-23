@@ -1,5 +1,6 @@
 import "server-only";
 
+import { athleteAssignmentWhere, coachAssignmentWhere } from "@/lib/db/access-rules";
 import { db } from "@/lib/db/prisma";
 import { effectivePlan, OVERRIDE_SELECT } from "@/lib/db/overrides";
 import type { EffectivePlan } from "@/lib/overrides/apply";
@@ -111,7 +112,7 @@ function toExecution(
 /** Asignación vigente del atleta en la sesión (o null si no le pertenece). */
 async function findAssignment(athleteId: string, sessionId: string) {
   return db().assignment.findFirst({
-    where: { sessionId, athleteId, status: "asignada" },
+    where: athleteAssignmentWhere(athleteId, sessionId),
     select: {
       id: true,
       session: { select: { id: true, title: true, scheduledDate: true, status: true, snapshot: true } },
@@ -185,7 +186,7 @@ export interface CoachAthleteExecutionDTO extends ExecutionDTO {
 /** Resultados de un atleta en una sesión propia del coach. */
 export async function findAthleteExecutionForCoach(coachId: string, sessionId: string, athleteId: string): Promise<CoachAthleteExecutionDTO | null> {
   const assignment = await db().assignment.findFirst({
-    where: { sessionId, athleteId, session: { coachId } },
+    where: coachAssignmentWhere(coachId, sessionId, athleteId),
     select: {
       id: true,
       status: true,

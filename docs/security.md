@@ -28,6 +28,7 @@ Controles vigentes, decisiones y pendientes. Despliegue y operación: [deploymen
   - `publicOrigin()` (`lib/http/origin.ts`) usa `APP_URL`, que es obligatoria en producción.
   - Sin `APP_URL` en desarrollo, solo acepta orígenes locales o los de `ALLOWED_ORIGINS`.
   - Next además rechaza Server Actions cuyo `Origin` no coincide con el host (CSRF).
+- **Recursos ajenos:** en carga directa, el proxy responde **404 real** si el detalle no existe o es de otro usuario (`lib/db/visibility.ts`, con las mismas reglas que las páginas en `lib/db/access-rules.ts`). El mensaje es el mismo para inexistente y ajeno, y no revela si existe. La página sigue verificando.
 - **Cerrar sesión** usa `scope: "local"` y borra los datos privados del atleta en el dispositivo (IndexedDB). Antes avisa si hay registros sin enviar.
 
 ### Base de datos

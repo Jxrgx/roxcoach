@@ -1,5 +1,6 @@
 import "server-only";
 
+import { coachAthleteWhere } from "@/lib/db/access-rules";
 import { db } from "@/lib/db/prisma";
 import type { RelationStatus } from "@/lib/invitations/rules";
 
@@ -64,7 +65,7 @@ export async function listCoachAthletes(coachId: string): Promise<RosterAthleteD
 /** Detalle de un atleta del coach, o null si no está relacionado con él. */
 export async function findCoachAthlete(coachId: string, athleteId: string): Promise<CoachAthleteDetailDTO | null> {
   const r = await db().coachAthlete.findFirst({
-    where: { coachId, athleteId, status: CURRENT },
+    where: coachAthleteWhere(coachId, athleteId),
     include: { athlete: { include: { profile: true } } },
   });
   if (!r?.athlete?.profile) return null;

@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { expect as baseExpect, test, type Browser, type Page } from "@playwright/test";
+import { type Browser, type Page } from "@playwright/test";
+import { expect as baseExpect, test, EXPECTED_DOCUMENT_404 } from "./fixtures";
 import { createClient } from "@supabase/supabase-js";
 import { ATHLETE_STATE, COACH_STATE, collectErrors, dbQuery, e2eEnv, field, horizontalOverflow, loginViaUi, readSeedIds, smallTargets } from "./helpers";
+import { TestData } from "./cleanup";
 
 const BASE_URL = "http://localhost:3100";
 
@@ -52,46 +54,36 @@ async function insertPublishedTemplate(name: string, coachId = readSeedIds().coa
     `insert into block_exercises (id, block_id, exercise_id, position, sets, target_type, distance_meters, load_kg, rest_seconds) values (gen_random_uuid(), $1, $2, 0, 4, 'distance', 50, 152, 120)`,
     [b2!.id, SYS.sledPush],
   );
+  data.templates.push(t!.id);
   return t!.id;
 }
 
-/** Limpieza (la app nunca borra; las pruebas sí): sesiones (y asignaciones) y plantillas. */
-async function cleanup(prefix: string) {
-  // Avisos de la fase 9 ligados a estas sesiones (si no, quedarían como historial huérfano).
-  await dbQuery(`delete from coach_alerts where session_id in (select id from scheduled_sessions where title like $1)`, [`${prefix}%`]);
-  await dbQuery(`delete from scheduled_sessions where title like $1`, [`${prefix}%`]);
-  await dbQuery(`delete from workout_templates where name like $1`, [`${prefix}%`]);
-}
-
 /**
- * Datos creados por la prueba en curso. Se limpian en afterEach, que se
- * ejecuta incluso si la prueba agota el tiempo (un finally no lo haría).
+ * Datos creados por la prueba en curso, por id exacto (tests/e2e/cleanup.ts). Se
+ * limpian en afterEach, que se ejecuta incluso si la prueba falla o agota el tiempo.
  */
-const created: { prefixes: string[]; users: string[] } = { prefixes: [], users: [] };
-
-function track(prefix: string) {
-  created.prefixes.push(prefix);
-  return prefix;
-}
+let data: TestData;
+test.beforeEach(() => {
+  data = new TestData();
+});
 
 test.afterEach(async () => {
-  for (const prefix of created.prefixes.splice(0)) await cleanup(prefix);
-  for (const id of created.users.splice(0)) {
-    // Primero la relación (deja de ser atleta activo: la sincronización ya no genera avisos), luego sus avisos.
-    await dbQuery(`delete from coach_athletes where athlete_id = $1`, [id]);
-    await dbQuery(`delete from coach_alerts where athlete_id = $1 or coach_id = $1`, [id]);
-    const { error } = await admin().auth.admin.deleteUser(id);
-    if (error && !/not.*found/i.test(error.message)) throw new Error(`No se pudo borrar el usuario de prueba: ${error.message}`);
+  // Las sesiones programadas por la UI salen de una plantilla de ESTA prueba: se
+  // ubican por su template_id exacto (antes de borrar la plantilla, que lo pone en NULL).
+  if (data.templates.length) {
+    const rows = await dbQuery<{ id: string }>(`select id from scheduled_sessions where template_id = any($1::uuid[])`, [data.templates]);
+    data.sessions.push(...rows.map((r) => r.id));
   }
+  await data.cleanup();
 });
 
 async function createUser(role: "coach" | "athlete", name: string) {
   const email = `${role}.prog.${Date.now()}.${Math.random().toString(36).slice(2, 7)}@example.com`;
   const password = `E2e-${randomBytes(9).toString("base64url")}`;
-  const { data, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name, role } });
-  if (error || !data.user) throw error ?? new Error("No se creó el usuario");
-  created.users.push(data.user.id);
-  return { id: data.user.id, email, password };
+  const { data: created, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name, role } });
+  if (error || !created.user) throw error ?? new Error("No se creó el usuario");
+  data.users.push(created.user.id);
+  return { id: created.user.id, email, password };
 }
 
 
@@ -150,7 +142,7 @@ test.describe("programación y asignación", () => {
 
   test("flujo completo: plantilla publicada → programar → el atleta la ve en su inicio, agenda y detalle", async ({ page, browser }) => {
     test.slow(); // varios contextos de navegador (coach y atleta)
-    const name = track(uniqueName("Engine"));
+    const name = uniqueName("Engine");
     const templateId = await insertPublishedTemplate(name);
     await page.goto(`/coach/entrenamientos/${templateId}`);
     await page.getByRole("link", { name: "Programar" }).click();
@@ -205,7 +197,7 @@ test.describe("programación y asignación", () => {
   });
 
   test("el snapshot queda congelado aunque la plantilla cambie después", async ({ page, browser }) => {
-    const name = track(uniqueName("Congelada"));
+    const name = uniqueName("Congelada");
     const templateId = await insertPublishedTemplate(name);
     const sessionId = await scheduleViaUi(page, templateId, { title: `${name} sesión`, date: today(3), athletes: ["Atleta Pruebas"] });
     await dbQuery(`update block_exercises set sets = 9 where block_id in (select id from workout_blocks where template_id = $1)`, [templateId]);
@@ -222,7 +214,7 @@ test.describe("programación y asignación", () => {
   });
 
   test("editar detalles y cancelar: el atleta ve los cambios", async ({ page, browser }) => {
-    const name = track(uniqueName("Editable"));
+    const name = uniqueName("Editable");
     const templateId = await insertPublishedTemplate(name);
     const sessionId = await scheduleViaUi(page, templateId, { title: `${name} original`, date: today(4), athletes: ["Atleta Pruebas"] });
 
@@ -252,9 +244,11 @@ test.describe("programación y asignación", () => {
     await athlete.ctx.close();
   });
 
-  test("agregar y quitar atletas; los atletas en pausa no se pueden asignar", async ({ page, browser }) => {
+  test("agregar y quitar atletas; los atletas en pausa no se pueden asignar", async ({ page, browser, consoleGuard }) => {
+    // Visita a propósito un detalle inexistente o ajeno: el documento responde 404 real.
+    consoleGuard.allow(EXPECTED_DOCUMENT_404);
     test.slow(); // crea usuarios y abre sesión con un segundo atleta
-    const name = track(uniqueName("Equipo"));
+    const name = uniqueName("Equipo");
     const templateId = await insertPublishedTemplate(name);
     const suffix = Math.random().toString(36).slice(2, 7);
     const secondName = `Atleta Segundo ${suffix}`;
@@ -262,8 +256,9 @@ test.describe("programación y asignación", () => {
     const second = await createUser("athlete", secondName);
     const paused = await createUser("athlete", pausedName);
     const coachId = readSeedIds().coachId;
-    await dbQuery(`insert into coach_athletes (id, coach_id, athlete_id, status) values (gen_random_uuid(), $1, $2, 'active')`, [coachId, second.id]);
-    await dbQuery(`insert into coach_athletes (id, coach_id, athlete_id, status, paused_at) values (gen_random_uuid(), $1, $2, 'paused', now())`, [coachId, paused.id]);
+    const [r1] = await dbQuery<{ id: string }>(`insert into coach_athletes (id, coach_id, athlete_id, status) values (gen_random_uuid(), $1, $2, 'active') returning id`, [coachId, second.id]);
+    const [r2] = await dbQuery<{ id: string }>(`insert into coach_athletes (id, coach_id, athlete_id, status, paused_at) values (gen_random_uuid(), $1, $2, 'paused', now()) returning id`, [coachId, paused.id]);
+    data.relations.push(r1!.id, r2!.id);
 
     await page.goto(`/coach/sesiones/nueva?plantilla=${templateId}`, { waitUntil: "networkidle" });
     await expect(athleteOption(page, secondName)).toBeVisible();
@@ -297,7 +292,7 @@ test.describe("programación y asignación", () => {
   });
 
   test("validaciones: fecha pasada y sesión en la semana siguiente del calendario", async ({ page }) => {
-    const name = track(uniqueName("Fechas"));
+    const name = uniqueName("Fechas");
     const templateId = await insertPublishedTemplate(name);
     await page.goto(`/coach/sesiones/nueva?plantilla=${templateId}`, { waitUntil: "networkidle" });
     await field(page, "Fecha").fill(today(-1));
@@ -319,7 +314,7 @@ test.describe("programación y asignación", () => {
     { width: 1280, height: 800 },
   ]) {
     test(`detalle de sesión (coach y atleta) responsive en ${vp.width}px`, async ({ page, browser }) => {
-      const name = track(uniqueName(`Responsive ${vp.width}`));
+      const name = uniqueName(`Responsive ${vp.width}`);
       const templateId = await insertPublishedTemplate(name);
       const sessionId = await scheduleViaUi(page, templateId, { title: `${name} sesión`, date: today(6), time: "07:00", notes: "Notas de prueba", athletes: ["Atleta Pruebas"] });
       const athlete = await athleteContext(browser);
@@ -342,9 +337,11 @@ test.describe("programación y asignación", () => {
 });
 
 test.describe("aislamiento de sesiones", () => {
-  test("otro coach no ve la sesión ni puede programar sin plantillas; un atleta no asignado tampoco la ve", async ({ browser }) => {
+  test("otro coach no ve la sesión ni puede programar sin plantillas; un atleta no asignado tampoco la ve", async ({ browser, consoleGuard }) => {
+    // Visita a propósito un detalle inexistente o ajeno: el documento responde 404 real.
+    consoleGuard.allow(EXPECTED_DOCUMENT_404);
     test.slow(); // crea dos usuarios e inicia sesión con cada uno
-    const name = track(uniqueName("Aislada"));
+    const name = uniqueName("Aislada");
     const templateId = await insertPublishedTemplate(name);
     const coach2 = await createUser("coach", "Coach Ajeno");
     const stranger = await createUser("athlete", "Atleta Ajeno");
@@ -353,6 +350,7 @@ test.describe("aislamiento de sesiones", () => {
        values (gen_random_uuid(), $1, $2, $3, $4, '{"version":1,"templateName":"x","focus":null,"intensity":"media","estimatedMinutes":30,"blocks":[]}') returning id`,
       [readSeedIds().coachId, templateId, `${name} sesión`, today(2)],
     );
+    data.sessions.push(session!.id);
     await dbQuery(`insert into assignments (id, session_id, athlete_id) values (gen_random_uuid(), $1, $2)`, [session!.id, readSeedIds().athleteId]);
 
     // Integridad: no se puede asignar a un atleta de otro coach (sin relación).

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Copy } from "lucide-react";
@@ -7,12 +8,24 @@ import { findExerciseForCoach, listSubstitutionCandidates } from "@/lib/db/exerc
 import { coachCanEdit } from "@/lib/exercises/rules";
 import { PageHeader } from "@/components/shared/page-header";
 import { ExerciseForm } from "@/components/coach/exercise-form";
+import { DetailSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Editar ejercicio" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function EditExercisePage({ params, searchParams }: PageProps<"/coach/biblioteca/[id]/editar">) {
+type Props = PageProps<"/coach/biblioteca/[id]/editar">;
+
+/** El enlace de regreso y el encabezado dependen del ejercicio: todo llega detrás de Suspense. */
+export default function EditExercisePage({ params, searchParams }: Props) {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-3xl"><DetailSkeleton label="Cargando ejercicio…" /></div>}>
+      <EditExercise params={params} searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function EditExercise({ params, searchParams }: Pick<Props, "params" | "searchParams">) {
   const [{ id }, query, coach] = await Promise.all([params, searchParams, requireCoach()]);
   const exercise = UUID_RE.test(id) ? await findExerciseForCoach(coach.id, id) : null;
   // Solo se editan ejercicios propios y activos; los del sistema se duplican.

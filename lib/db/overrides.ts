@@ -1,5 +1,6 @@
 import "server-only";
 
+import { coachAssignmentWhere, coachAthleteWhere } from "@/lib/db/access-rules";
 import { db } from "@/lib/db/prisma";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { applyOverrides, overrideLock, type EffectivePlan, type OverrideLock, type OverrideRow, type ReplacementOption } from "@/lib/overrides/apply";
@@ -74,7 +75,7 @@ export interface AssignmentForOverrideDTO {
 export async function findAssignmentForOverride(coachId: string, sessionId: string, athleteId: string): Promise<AssignmentForOverrideDTO | null> {
   const [assignment, relation] = await Promise.all([
     db().assignment.findFirst({
-      where: { sessionId, athleteId, session: { coachId } },
+      where: coachAssignmentWhere(coachId, sessionId, athleteId),
       select: {
         status: true,
         athlete: { select: { profile: { select: { name: true } } } },
@@ -83,7 +84,7 @@ export async function findAssignmentForOverride(coachId: string, sessionId: stri
         overrides: { select: { ...OVERRIDE_SELECT, updatedAt: true, updatedBy: { select: { profile: { select: { name: true } } } } }, orderBy: { updatedAt: "desc" } },
       },
     }),
-    db().coachAthlete.findFirst({ where: { coachId, athleteId, status: { in: ["active", "paused"] } }, select: { status: true } }),
+    db().coachAthlete.findFirst({ where: coachAthleteWhere(coachId, athleteId), select: { status: true } }),
   ]);
   if (!assignment?.session || !assignment.athlete?.profile || !relation) return null;
   const last = assignment.overrides[0];

@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { expect as baseExpect, test, type Browser, type Page } from "@playwright/test";
+import { type Browser, type Page } from "@playwright/test";
+import { expect as baseExpect, test, EXPECTED_DOCUMENT_404 } from "./fixtures";
 import { createClient } from "@supabase/supabase-js";
 import { COACH_STATE, collectErrors, dbQuery, e2eEnv, horizontalOverflow, loginViaUi, readSeedIds, smallTargets } from "./helpers";
+import { TestData } from "./cleanup";
 
 /**
  * Ejecución del entrenamiento (fase 7).
@@ -32,23 +34,16 @@ function admin() {
   return createClient(env.supabaseUrl, env.secretKey, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-const created: { prefixes: string[]; users: string[] } = { prefixes: [], users: [] };
-
-test.afterEach(async () => {
-  // Borrar la sesión elimina en cascada asignaciones, registros, series y molestias.
-  for (const prefix of created.prefixes.splice(0)) {
-    // Avisos de la fase 9 ligados a estas sesiones (si no, quedarían como historial huérfano).
-    await dbQuery(`delete from coach_alerts where session_id in (select id from scheduled_sessions where title like $1)`, [`${prefix}%`]);
-    await dbQuery(`delete from scheduled_sessions where title like $1`, [`${prefix}%`]);
-  }
-  for (const id of created.users.splice(0)) {
-    // Primero la relación (deja de ser atleta activo: la sincronización ya no genera avisos), luego sus avisos.
-    await dbQuery(`delete from coach_athletes where athlete_id = $1`, [id]);
-    await dbQuery(`delete from coach_alerts where athlete_id = $1 or coach_id = $1`, [id]);
-    const { error } = await admin().auth.admin.deleteUser(id);
-    if (error && !/not.*found/i.test(error.message)) throw new Error(`No se pudo borrar el usuario de prueba: ${error.message}`);
-  }
+/**
+ * Datos creados por la prueba en curso, por id exacto (tests/e2e/cleanup.ts).
+ * Borrar la sesión elimina en cascada asignaciones, registros, series y molestias;
+ * los avisos se borran después por el id de sus asignaciones (sin carreras).
+ */
+let data: TestData;
+test.beforeEach(() => {
+  data = new TestData();
 });
+test.afterEach(() => data.cleanup());
 
 /** Snapshot de prueba: 2 × 1 km (descanso 5 s) y 1 × 20 Wall Balls con 6 kg. */
 const SNAPSHOT = {
@@ -79,26 +74,30 @@ const SNAPSHOT = {
 async function newAthlete(browser: Browser, name: string) {
   const email = `athlete.exec.${Date.now()}.${Math.random().toString(36).slice(2, 7)}@example.com`;
   const password = `E2e-${randomBytes(9).toString("base64url")}`;
-  const { data, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name, role: "athlete" } });
-  if (error || !data.user) throw error ?? new Error("No se creó el usuario");
-  created.users.push(data.user.id);
-  await dbQuery(`insert into coach_athletes (id, coach_id, athlete_id, status) values (gen_random_uuid(), $1, $2, 'active')`, [readSeedIds().coachId, data.user.id]);
+  const { data: created, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name, role: "athlete" } });
+  if (error || !created.user) throw error ?? new Error("No se creó el usuario");
+  data.users.push(created.user.id);
+  const [relation] = await dbQuery<{ id: string }>(
+    `insert into coach_athletes (id, coach_id, athlete_id, status) values (gen_random_uuid(), $1, $2, 'active') returning id`,
+    [readSeedIds().coachId, created.user.id],
+  );
+  data.relations.push(relation!.id);
   const ctx = await browser.newContext({ baseURL: BASE_URL, locale: "es-MX", timezoneId: "America/Mexico_City", storageState: { cookies: [], origins: [] } });
   const page = await ctx.newPage();
   await loginViaUi(page, email, password);
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
-  return { id: data.user.id, name, ctx, page };
+  return { id: created.user.id, name, ctx, page };
 }
 
 /** Sesión del coach compartido asignada al atleta (insertada en la BD). */
 async function insertSession(title: string, athleteId: string, opts: { date?: string; status?: "programada" | "cancelada" } = {}) {
-  created.prefixes.push(title);
   const status = opts.status ?? "programada";
   const [s] = await dbQuery<{ id: string }>(
     `insert into scheduled_sessions (id, coach_id, title, scheduled_date, status, cancelled_at, snapshot)
      values (gen_random_uuid(), $1, $2, $3, $4, ${status === "cancelada" ? "now()" : "null"}, $5) returning id`,
     [readSeedIds().coachId, title, opts.date ?? today(), status, JSON.stringify(SNAPSHOT)],
   );
+  data.sessions.push(s!.id);
   await dbQuery(`insert into assignments (id, session_id, athlete_id) values (gen_random_uuid(), $1, $2)`, [s!.id, athleteId]);
   return s!.id;
 }
@@ -291,7 +290,9 @@ test.describe("ejecución del atleta", () => {
     await athlete.ctx.close();
   });
 
-  test("reglas: futuras y canceladas no se comienzan; otro atleta no accede; integridad en la BD", async ({ browser }) => {
+  test("reglas: futuras y canceladas no se comienzan; otro atleta no accede; integridad en la BD", async ({ browser, consoleGuard }) => {
+    // Visita a propósito un detalle inexistente o ajeno: el documento responde 404 real.
+    consoleGuard.allow(EXPECTED_DOCUMENT_404);
     test.slow();
     const athlete = await newAthlete(browser, `Atleta Reglas ${Math.random().toString(36).slice(2, 6)}`);
     const future = await insertSession(uniqueName("Futura"), athlete.id, { date: today(3) });

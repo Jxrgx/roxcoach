@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { expect as baseExpect, test, type Browser, type Page } from "@playwright/test";
+import { type Browser, type Page } from "@playwright/test";
+import { expect as baseExpect, test, EXPECTED_DOCUMENT_404 } from "./fixtures";
 import { createClient } from "@supabase/supabase-js";
 import { COACH_STATE, collectErrors, dbQuery, e2eEnv, horizontalOverflow, loginViaUi, readSeedIds, smallTargets } from "./helpers";
+import { TestData } from "./cleanup";
 
 /**
  * Progreso y métricas (fase 8). Cada prueba crea sus PROPIOS atletas con datos
@@ -33,22 +35,16 @@ function admin() {
   return createClient(env.supabaseUrl, env.secretKey, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-const created: { prefixes: string[]; users: string[] } = { prefixes: [], users: [] };
-
-test.afterEach(async () => {
-  for (const prefix of created.prefixes.splice(0)) {
-    // Avisos de la fase 9 ligados a estas sesiones (si no, quedarían como historial huérfano).
-    await dbQuery(`delete from coach_alerts where session_id in (select id from scheduled_sessions where title like $1)`, [`${prefix}%`]);
-    await dbQuery(`delete from scheduled_sessions where title like $1`, [`${prefix}%`]);
-  }
-  for (const id of created.users.splice(0)) {
-    // Primero la relación (deja de ser atleta activo: la sincronización ya no genera avisos), luego sus avisos.
-    await dbQuery(`delete from coach_athletes where athlete_id = $1`, [id]);
-    await dbQuery(`delete from coach_alerts where athlete_id = $1 or coach_id = $1`, [id]);
-    const { error } = await admin().auth.admin.deleteUser(id);
-    if (error && !/not.*found/i.test(error.message)) throw new Error(`No se pudo borrar el usuario de prueba: ${error.message}`);
-  }
+/**
+ * Datos creados por la prueba en curso, por id exacto (tests/e2e/cleanup.ts).
+ * Borrar la sesión elimina en cascada asignaciones, registros, series y molestias;
+ * los avisos se borran después por el id de sus asignaciones (sin carreras).
+ */
+let data: TestData;
+test.beforeEach(() => {
+  data = new TestData();
 });
+test.afterEach(() => data.cleanup());
 
 const SNAPSHOT = {
   version: 1,
@@ -71,15 +67,19 @@ const SNAPSHOT = {
 async function createUser(role: "coach" | "athlete", name: string) {
   const email = `${role}.prog8.${Date.now()}.${Math.random().toString(36).slice(2, 7)}@example.com`;
   const password = `E2e-${randomBytes(9).toString("base64url")}`;
-  const { data, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name, role } });
-  if (error || !data.user) throw error ?? new Error("No se creó el usuario");
-  created.users.push(data.user.id);
-  return { id: data.user.id, name, email, password };
+  const { data: created, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name, role } });
+  if (error || !created.user) throw error ?? new Error("No se creó el usuario");
+  data.users.push(created.user.id);
+  return { id: created.user.id, name, email, password };
 }
 
 async function newAthlete(name: string) {
   const user = await createUser("athlete", name);
-  await dbQuery(`insert into coach_athletes (id, coach_id, athlete_id, status) values (gen_random_uuid(), $1, $2, 'active')`, [readSeedIds().coachId, user.id]);
+  const [relation] = await dbQuery<{ id: string }>(
+    `insert into coach_athletes (id, coach_id, athlete_id, status) values (gen_random_uuid(), $1, $2, 'active') returning id`,
+    [readSeedIds().coachId, user.id],
+  );
+  data.relations.push(relation!.id);
   return user;
 }
 
@@ -108,6 +108,7 @@ async function addSession(prefix: string, athleteId: string, label: string, o: S
     `insert into scheduled_sessions (id, coach_id, title, scheduled_date, snapshot) values (gen_random_uuid(), $1, $2, $3, $4) returning id`,
     [readSeedIds().coachId, `${prefix} ${label}`, date, JSON.stringify(SNAPSHOT)],
   );
+  data.sessions.push(s!.id);
   const [a] = await dbQuery<{ id: string }>(`insert into assignments (id, session_id, athlete_id) values (gen_random_uuid(), $1, $2) returning id`, [s!.id, athleteId]);
   if (o.completed || o.started) {
     // Inicio a las 12:00 de México (18:00 UTC) del día programado; 40 min de trabajo.
@@ -141,7 +142,6 @@ async function addSession(prefix: string, athleteId: string, label: string, o: S
  */
 async function athleteWithHistory(label: string) {
   const prefix = uniqueName(label);
-  created.prefixes.push(prefix);
   const athlete = await newAthlete(`Atleta Progreso ${Math.random().toString(36).slice(2, 6)}`);
   await addSession(prefix, athlete.id, "uno", { offset: -5, completed: { sled: [135, 140], wall: 20, rpe: 7 } });
   await addSession(prefix, athlete.id, "dos", { offset: -2, completed: { sled: [152, 150], wall: 18, rpe: 8 }, discomfort: { zone: "rodilla", intensity: "leve" } });
@@ -190,7 +190,6 @@ test.describe("progreso del atleta", () => {
   test("sin datos: sin asignaciones muestra cómo empezar; con asignaciones sin completar pide la primera sesión", async ({ browser }) => {
     test.slow();
     const prefix = uniqueName("SinDatos");
-    created.prefixes.push(prefix);
     const empty = await newAthlete(`Atleta Vacío ${Math.random().toString(36).slice(2, 6)}`);
     const fresh = await newAthlete(`Atleta Nuevo ${Math.random().toString(36).slice(2, 6)}`);
     await addSession(prefix, fresh.id, "futura", { offset: 2 });
@@ -203,7 +202,7 @@ test.describe("progreso del atleta", () => {
 
     const b = await loggedIn(browser, fresh);
     await b.page.goto("/atleta/progreso");
-    await expect(b.page.getByText("Completa tu primera sesión")).toBeVisible();
+    await expect(b.page.getByRole("heading", { name: "Completa tu primera sesión" })).toBeVisible();
     await expect(b.page.getByRole("link", { name: "Ir a mi entrenamiento" })).toBeVisible();
     await expect(b.page.getByRole("region", { name: "Adherencia" }).getByText("Aún no hay datos suficientes")).toBeVisible();
     // Aislamiento entre atletas: no ve nada de otro atleta.
@@ -267,7 +266,9 @@ test.describe("progreso del coach", () => {
 });
 
 test.describe("aislamiento y estados", () => {
-  test("otro coach no ve atletas ni datos ajenos", async ({ browser }) => {
+  test("otro coach no ve atletas ni datos ajenos", async ({ browser, consoleGuard }) => {
+    // Visita a propósito un detalle inexistente o ajeno: el documento responde 404 real.
+    consoleGuard.allow(EXPECTED_DOCUMENT_404);
     test.slow();
     const { athlete } = await athleteWithHistory("Aislado");
     const coach2 = await createUser("coach", "Coach Ajeno Progreso");

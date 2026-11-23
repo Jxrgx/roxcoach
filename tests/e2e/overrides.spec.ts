@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { expect as baseExpect, test, type Browser, type Locator, type Page } from "@playwright/test";
+import { type Browser, type Locator, type Page } from "@playwright/test";
+import { expect as baseExpect, test, EXPECTED_DOCUMENT_404 } from "./fixtures";
 import { createClient } from "@supabase/supabase-js";
 import { ATHLETE_STATE, collectErrors, dbQuery, e2eEnv, horizontalOverflow, loginViaUi, smallTargets } from "./helpers";
+import { TestData } from "./cleanup";
 
 /**
  * Personalización por atleta (fase 10). Cada prueba crea su PROPIO coach y dos
@@ -46,23 +48,25 @@ function admin() {
   return createClient(env.supabaseUrl, env.secretKey, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-const createdUsers: string[] = [];
-test.afterEach(async () => {
-  // Coaches al final: su borrado arrastra sesiones, asignaciones, ajustes y avisos.
-  for (const id of createdUsers.splice(0).reverse()) {
-    await dbQuery(`delete from coach_alerts where athlete_id = $1 or coach_id = $1`, [id]);
-    const { error } = await admin().auth.admin.deleteUser(id);
-    if (error && !/not.*found/i.test(error.message)) throw new Error(`No se pudo borrar el usuario de prueba: ${error.message}`);
-  }
+/**
+ * Datos creados por la prueba en curso, por id exacto (tests/e2e/cleanup.ts).
+ * Todo cuelga del coach y atletas que crea la prueba: se borran sus sesiones
+ * (cascada: asignaciones, registros, ajustes, ops), luego sus avisos y al final
+ * los usuarios. Corre en afterEach aunque la prueba falle o agote el tiempo.
+ */
+let data: TestData;
+test.beforeEach(() => {
+  data = new TestData();
 });
+test.afterEach(() => data.cleanup());
 
 async function createUser(role: "coach" | "athlete", name: string) {
   const email = `${role}.ajustes.${Date.now()}.${Math.random().toString(36).slice(2, 7)}@example.com`;
   const password = `E2e-${randomBytes(9).toString("base64url")}`;
-  const { data, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name, role } });
-  if (error || !data.user) throw error ?? new Error("No se creó el usuario");
-  createdUsers.push(data.user.id);
-  return { id: data.user.id, name, email, password };
+  const { data: created, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name, role } });
+  if (error || !created.user) throw error ?? new Error("No se creó el usuario");
+  data.users.push(created.user.id);
+  return { id: created.user.id, name, email, password };
 }
 
 async function loggedIn(browser: Browser, user: { email: string; password: string }, viewport = { width: 1280, height: 800 }) {
@@ -86,6 +90,7 @@ async function setup() {
     `insert into scheduled_sessions (id, coach_id, title, scheduled_date, snapshot) values (gen_random_uuid(), $1, 'Sesión Ajustable', $2, $3) returning id`,
     [coach.id, today(), JSON.stringify(SNAPSHOT)],
   );
+  data.sessions.push(s!.id);
   const assignment: Record<string, string> = {};
   for (const athlete of [a, b]) {
     const [r] = await dbQuery<{ id: string }>(`insert into assignments (id, session_id, athlete_id) values (gen_random_uuid(), $1, $2) returning id`, [s!.id, athlete.id]);
@@ -276,7 +281,9 @@ test.describe("personalización por atleta", () => {
 });
 
 test.describe("permisos y bloqueos", () => {
-  test("otro coach no ve la personalización; cancelada y retirada bloquean; un atleta no entra", async ({ browser }) => {
+  test("otro coach no ve la personalización; cancelada y retirada bloquean; un atleta no entra", async ({ browser, consoleGuard }) => {
+    // Visita a propósito un detalle inexistente o ajeno: el documento responde 404 real.
+    consoleGuard.allow(EXPECTED_DOCUMENT_404);
     test.slow();
     const { a, b, coach, sessionId, assignment } = await setup();
     const other = await createUser("coach", "Coach Ajeno Ajustes");

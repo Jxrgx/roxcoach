@@ -8,6 +8,10 @@
 generator client {
   provider = "prisma-client"
   output   = "../lib/generated/prisma"
+  // Fase 14: las relaciones (include/select anidados) se resuelven en UNA consulta
+  // con JOIN LATERAL en lugar de una consulta por nivel (~100 ms cada una contra
+  // Supabase). Es una función preview de Prisma 7: ver docs/architecture.md.
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {

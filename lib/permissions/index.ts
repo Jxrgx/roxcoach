@@ -132,3 +132,17 @@ export function confirmNextPath(raw: string | null | undefined, origins: readonl
   const path = url.pathname + url.search + url.hash;
   return isSafeInternalPath(path) ? path : null;
 }
+
+export type ProfileAccess = { type: "allow" } | { type: "redirect"; to: string };
+
+/**
+ * Decisión final del servidor para un área, con el rol leído de `profiles`
+ * (nunca del cliente ni solo del JWT):
+ * - sin perfil → se cierra la sesión (evita un bucle de redirecciones);
+ * - rol distinto → inicio de su rol.
+ */
+export function profileAccess(expected: Role, actual: Role | null): ProfileAccess {
+  if (!actual) return { type: "redirect", to: "/auth/salir?error=perfil" };
+  if (actual !== expected) return { type: "redirect", to: ROLE_HOME[actual] };
+  return { type: "allow" };
+}

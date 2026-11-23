@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { expect as baseExpect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect as baseExpect, test, OFFLINE_NETWORK_ERRORS } from "./fixtures";
 import { createClient } from "@supabase/supabase-js";
 import { collectErrors, dbQuery, e2eEnv, horizontalOverflow, loginViaUi, smallTargets } from "./helpers";
+import { TestData } from "./cleanup";
 
 /**
  * Ejecución sin conexión (fase 11). Cada prueba crea su PROPIO coach y atleta;
@@ -44,22 +46,25 @@ function admin() {
   return createClient(env.supabaseUrl, env.secretKey, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-const createdUsers: string[] = [];
-test.afterEach(async () => {
-  for (const id of createdUsers.splice(0).reverse()) {
-    await dbQuery(`delete from coach_alerts where athlete_id = $1 or coach_id = $1`, [id]);
-    const { error } = await admin().auth.admin.deleteUser(id);
-    if (error && !/not.*found/i.test(error.message)) throw new Error(`No se pudo borrar el usuario de prueba: ${error.message}`);
-  }
+/**
+ * Datos creados por la prueba en curso, por id exacto (tests/e2e/cleanup.ts).
+ * Todo cuelga del coach y atletas que crea la prueba: se borran sus sesiones
+ * (cascada: asignaciones, registros, ajustes, ops), luego sus avisos y al final
+ * los usuarios. Corre en afterEach aunque la prueba falle o agote el tiempo.
+ */
+let data: TestData;
+test.beforeEach(() => {
+  data = new TestData();
 });
+test.afterEach(() => data.cleanup());
 
 async function createUser(role: "coach" | "athlete", name: string) {
   const email = `${role}.offline.${Date.now()}.${Math.random().toString(36).slice(2, 7)}@example.com`;
   const password = `E2e-${randomBytes(9).toString("base64url")}`;
-  const { data, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name, role } });
-  if (error || !data.user) throw error ?? new Error("No se creó el usuario");
-  createdUsers.push(data.user.id);
-  return { id: data.user.id, name, email, password };
+  const { data: created, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name, role } });
+  if (error || !created.user) throw error ?? new Error("No se creó el usuario");
+  data.users.push(created.user.id);
+  return { id: created.user.id, name, email, password };
 }
 
 /** Coach + atleta activo + sesión de hoy asignada. Devuelve ids. */
@@ -71,6 +76,7 @@ async function setup(rest = 3) {
     `insert into scheduled_sessions (id, coach_id, title, scheduled_date, snapshot) values (gen_random_uuid(), $1, 'Sesión Offline', $2, $3) returning id`,
     [coach.id, today(), JSON.stringify(snapshot(rest))],
   );
+  data.sessions.push(s!.id);
   const [a] = await dbQuery<{ id: string }>(`insert into assignments (id, session_id, athlete_id) values (gen_random_uuid(), $1, $2) returning id`, [s!.id, athlete.id]);
   return { coach, athlete, sessionId: s!.id, assignmentId: a!.id };
 }
@@ -119,6 +125,9 @@ async function blockSync(ctx: BrowserContext, sessionId: string) {
 }
 
 test.describe("ejecución sin conexión", () => {
+  // Estas pruebas cortan la red a propósito: el navegador registra los recursos que no pudo descargar.
+  test.beforeEach(({ consoleGuard }) => consoleGuard.allow(...OFFLINE_NETWORK_ERRORS));
+
   test("online y offline: la serie se ve al instante, sobrevive a recargar sin red y se sincroniza sin duplicar", async ({ browser }) => {
     test.slow();
     const { athlete, sessionId, assignmentId } = await setup();

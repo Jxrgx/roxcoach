@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { PartyPopper } from "lucide-react";
 import { requireAthlete } from "@/lib/auth/session";
 import { findAthleteCoach } from "@/lib/db/athletes";
@@ -6,20 +7,31 @@ import { PageHeader } from "@/components/shared/page-header";
 import { ScreenStates } from "@/components/shared/screen-states";
 import { Avatar } from "@/components/shared/avatar";
 import { SignOutButton } from "@/components/shared/sign-out-button";
+import { ContentSkeleton } from "@/components/shared/page-skeletons";
 import { AthleteProfileForm } from "@/components/athlete/athlete-profile-form";
 import { CoachRelationCard } from "@/components/athlete/coach-relation-card";
 
 export const metadata: Metadata = { title: "Perfil" };
 
-export default async function AthleteProfilePage({ searchParams }: PageProps<"/atleta/perfil">) {
+/** La estructura aparece al instante; los datos del atleta llegan detrás de Suspense. */
+export default function AthleteProfilePage({ searchParams }: PageProps<"/atleta/perfil">) {
+  return (
+    <>
+      <PageHeader title="Perfil" description="Mantén tus datos al día para que tu coach programe mejor." />
+      <Suspense fallback={<ContentSkeleton label="Cargando perfil…" rows={4} />}>
+        <ProfileContent searchParams={searchParams} />
+      </Suspense>
+    </>
+  );
+}
+
+async function ProfileContent({ searchParams }: { searchParams: PageProps<"/atleta/perfil">["searchParams"] }) {
   const athlete = await requireAthlete();
   const [coach, query] = await Promise.all([findAthleteCoach(athlete.id), searchParams]);
   const welcome = query.bienvenida === "1" && coach !== null;
 
   return (
     <>
-      <PageHeader title="Perfil" description="Mantén tus datos al día para que tu coach programe mejor." />
-
       {welcome && (
         <div role="status" className="mb-4 flex items-start gap-3 rounded-2xl border border-positive/30 bg-positive/10 p-4">
           <PartyPopper aria-hidden className="mt-0.5 size-5 shrink-0 text-positive" />

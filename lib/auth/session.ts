@@ -4,8 +4,8 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { findAthleteProfile, findCoachProfile, findProfile } from "@/lib/db/profiles";
-import { ROLE_HOME } from "@/lib/permissions";
+import { findProfile, findRoleProfile, type AthleteProfileDTO, type CoachProfileDTO, type RoleProfile } from "@/lib/db/profiles";
+import { profileAccess } from "@/lib/permissions";
 import type { Role } from "@/lib/types/domain";
 
 /**
@@ -30,27 +30,29 @@ export const getCurrentProfile = cache(async () => {
   return findProfile(userId);
 });
 
-/** Redirige si no hay sesión, si falta el perfil o si el rol no corresponde. */
-async function requireProfile(role: Role) {
+/** Sesión + perfil del rol en una sola lectura (una por petición gracias a `cache`). */
+const getRoleProfile = cache(async (): Promise<RoleProfile | null> => {
   const userId = await getSessionUserId();
   if (!userId) redirect("/login");
-  const profile = await findProfile(userId);
-  // Sesión válida sin perfil: se cierra la sesión para evitar un bucle de redirecciones.
-  if (!profile) redirect("/auth/salir?error=perfil");
-  if (profile.role !== role) redirect(ROLE_HOME[profile.role]);
-  return userId;
-}
-
-export const requireCoach = cache(async () => {
-  const userId = await requireProfile("coach");
-  const coach = await findCoachProfile(userId);
-  if (!coach) redirect("/auth/salir?error=perfil");
-  return coach;
+  return findRoleProfile(userId);
 });
 
-export const requireAthlete = cache(async () => {
-  const userId = await requireProfile("athlete");
-  const athlete = await findAthleteProfile(userId);
-  if (!athlete) redirect("/auth/salir?error=perfil");
-  return athlete;
+/** Verificación definitiva del área: redirige si falta el perfil o el rol no corresponde. */
+async function requireRole(role: Role): Promise<RoleProfile> {
+  const found = await getRoleProfile();
+  const access = profileAccess(role, found?.role ?? null);
+  if (access.type === "redirect" || !found) redirect(access.type === "redirect" ? access.to : "/auth/salir?error=perfil");
+  return found;
+}
+
+export const requireCoach = cache(async (): Promise<CoachProfileDTO> => {
+  const found = await requireRole("coach");
+  if (found.role !== "coach") redirect("/auth/salir?error=perfil");
+  return found.profile;
+});
+
+export const requireAthlete = cache(async (): Promise<AthleteProfileDTO> => {
+  const found = await requireRole("athlete");
+  if (found.role !== "athlete") redirect("/auth/salir?error=perfil");
+  return found.profile;
 });

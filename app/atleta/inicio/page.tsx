@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { CalendarCheck, Clock, Layers, PauseCircle, Play } from "lucide-react";
 import { requireAthlete } from "@/lib/auth/session";
@@ -14,10 +15,36 @@ import { ExecutionStatusBadge } from "@/components/workouts/execution-status";
 import { ButtonLink } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/card";
 import { StateMessage } from "@/components/ui/state-message";
+import { ContentSkeleton, HeaderSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Inicio" };
 
-export default async function AthleteHomePage() {
+/** Saludo y contenido llegan por separado detrás de Suspense; la navegación ya está visible. */
+export default function AthleteHomePage() {
+  return (
+    <>
+      <Suspense fallback={<HeaderSkeleton />}>
+        <HomeHeader />
+      </Suspense>
+      <Suspense fallback={<ContentSkeleton label="Cargando tu entrenamiento…" rows={3} />}>
+        <HomeContent />
+      </Suspense>
+    </>
+  );
+}
+
+async function HomeHeader() {
+  const athlete = await requireAthlete();
+  const firstName = athlete.name.split(" ")[0];
+  return (
+    <header className="mb-5">
+      <h1 className="text-2xl font-bold tracking-tight text-ink">Hola, {firstName}</h1>
+      <RaceCountdown raceDate={athlete.raceDate} />
+    </header>
+  );
+}
+
+async function HomeContent() {
   const athlete = await requireAthlete();
   const today = todayKey(APP_TIME_ZONE);
   const monday = mondayOf(today);
@@ -28,7 +55,6 @@ export default async function AthleteHomePage() {
     listUpcomingAthleteSessions(athlete.id, addDaysKey(today, 1), 2),
     listAthleteSessions(athlete.id, monday, addDaysKey(monday, 6)),
   ]);
-  const firstName = athlete.name.split(" ")[0];
   const todaysScheduled = todays.filter((s) => s.status === "programada");
   // Primero una sesión que quedó en curso; luego la de hoy sin completar.
   const current = inProgress ?? todaysScheduled.find((s) => s.execution !== "completada") ?? todaysScheduled[0];
@@ -42,11 +68,6 @@ export default async function AthleteHomePage() {
 
   return (
     <>
-      <header className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight text-ink">Hola, {firstName}</h1>
-        <RaceCountdown raceDate={athlete.raceDate} />
-      </header>
-
       {coach?.status === "paused" && (
         <p role="status" className="mb-5 flex items-start gap-2 rounded-2xl border border-warning/30 bg-warning/10 p-3.5 text-sm text-ink">
           <PauseCircle aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />

@@ -39,17 +39,22 @@ export async function findProfile(userId: string): Promise<ProfileDTO | null> {
   return p;
 }
 
-export async function findCoachProfile(userId: string): Promise<CoachProfileDTO | null> {
-  const p = await db().profile.findUnique({ where: { id: userId }, include: { coach: true } });
-  if (!p || p.role !== "coach") return null;
+const COACH_SELECT = { gymName: true, weightUnit: true, distanceUnit: true } as const;
+const ATHLETE_SELECT = { division: true, raceDate: true, availableDays: true, equipment: true, weightUnit: true } as const;
+
+type BaseRow = { id: string; email: string; name: string };
+type CoachRow = { gymName: string | null; weightUnit: "kg" | "lb"; distanceUnit: "km" | "mi" } | null;
+type AthleteRow = { division: string | null; raceDate: Date | null; availableDays: string[]; equipment: string[]; weightUnit: "kg" | "lb" } | null;
+
+function toCoachDTO(p: BaseRow, coach: CoachRow): CoachProfileDTO {
   return {
     id: p.id,
     email: p.email,
     name: p.name,
     role: "coach",
-    gymName: p.coach?.gymName ?? "",
-    weightUnit: p.coach?.weightUnit ?? "kg",
-    distanceUnit: p.coach?.distanceUnit ?? "km",
+    gymName: coach?.gymName ?? "",
+    weightUnit: coach?.weightUnit ?? "kg",
+    distanceUnit: coach?.distanceUnit ?? "km",
   };
 }
 
@@ -59,20 +64,34 @@ function dateOnlyToKey(date: Date | null | undefined): string {
   return date.toISOString().slice(0, 10);
 }
 
-export async function findAthleteProfile(userId: string): Promise<AthleteProfileDTO | null> {
-  const p = await db().profile.findUnique({ where: { id: userId }, include: { athlete: true } });
-  if (!p || p.role !== "athlete") return null;
+function toAthleteDTO(p: BaseRow, athlete: AthleteRow): AthleteProfileDTO {
   return {
     id: p.id,
     email: p.email,
     name: p.name,
     role: "athlete",
-    division: p.athlete?.division ?? "",
-    raceDate: dateOnlyToKey(p.athlete?.raceDate),
-    availableDays: p.athlete?.availableDays ?? [],
-    equipment: p.athlete?.equipment ?? [],
-    weightUnit: p.athlete?.weightUnit ?? "kg",
+    division: athlete?.division ?? "",
+    raceDate: dateOnlyToKey(athlete?.raceDate),
+    availableDays: athlete?.availableDays ?? [],
+    equipment: athlete?.equipment ?? [],
+    weightUnit: athlete?.weightUnit ?? "kg",
   };
+}
+
+export type RoleProfile = { role: "coach"; profile: CoachProfileDTO } | { role: "athlete"; profile: AthleteProfileDTO };
+
+/**
+ * Perfil con su rol y los datos del rol en UNA lectura (fase 14): la sesión
+ * pasaba por tres consultas en secuencia (perfil, perfil + relación, datos del
+ * rol). El rol sale de la base de datos; null = no existe el perfil.
+ */
+export async function findRoleProfile(userId: string): Promise<RoleProfile | null> {
+  const p = await db().profile.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true, role: true, coach: { select: COACH_SELECT }, athlete: { select: ATHLETE_SELECT } },
+  });
+  if (!p) return null;
+  return p.role === "coach" ? { role: "coach", profile: toCoachDTO(p, p.coach) } : { role: "athlete", profile: toAthleteDTO(p, p.athlete) };
 }
 
 export async function updateCoachProfile(

@@ -395,6 +395,75 @@ Detalle operativo en [deployment.md](deployment.md) y controles en [security.md]
   - `scripts/db-audit.mjs` (`npm run db:audit`) lo verifica sin escribir.
 - **PWA:** sin cambios en el service worker (`SW_VERSION` se mantiene). `/sw.js` y `/sw-rules.js` se sirven con `Cache-Control: no-cache`, y la CSP permite `worker-src`/`manifest-src 'self'`.
 
+## Rendimiento y navegación instantánea (fase 14)
+
+**Problema.** En `next dev`, todas las páginas de `/coach` y `/atleta` registraban "Route …: Next.js encountered uncached data during prerendering or a navigation".
+
+- **Causa:** cada página hacía `await` de la sesión y de Prisma en el nivel superior.
+- **Por qué no bastaba el layout:** en una navegación cliente, el layout del área (con su `<Suspense>` y el gate) y su `loading.tsx` ya están montados, por encima de lo que se vuelve a renderizar. Por eso no cubrían la página nueva.
+- **Consecuencia:** la navegación mostraba un esqueleto genérico y esperaba **todos** los datos antes de mostrar incluso el título.
+
+**Patrón actual (todas las páginas protegidas):**
+
+- **Página síncrona:**
+  - La estructura (título, descripción y acciones estáticas) se renderiza fuera de `<Suspense>`, así que forma parte del App Shell que se prefetchea y aparece al instante.
+  - Lo que depende de la sesión, de Prisma, de `params` o de `searchParams` va en un componente async dentro de `<Suspense>`. Sus fallbacks están en `components/shared/page-skeletons.tsx`: `HeaderSkeleton`, `ContentSkeleton`, `DetailSkeleton` e `InlineSkeleton` (`<span>`, válido dentro del `<p>` de la descripción).
+- **Partes del encabezado que dependen de datos** (saludo "Hola, {nombre}", conteos) van en su propio `<Suspense>` pequeño. En los detalles, cuyo título es el nombre del recurso, toda la página usa `DetailSkeleton`.
+- **Datos compartidos por varias secciones:** un cargador de la página envuelto en `cache()` de React (por petición). Por ejemplo, `loadRoster` en `/coach/atletas`, y `loadToday`, `loadAlerts` y `loadTeam` en `/coach/inicio`, cuyas cuatro secciones llegan por separado.
+- **Sin cambios:** se conservan el gate del layout (verificación de rol en la carga directa) y `requireCoach`/`requireAthlete` dentro de cada componente con datos. `notFound()` y `redirect()` ahora ocurren durante el streaming: la UI es la misma, pero el estado HTTP queda en 200 (ver "Status codes" en la documentación de `loading.js` de Next).
+
+**Sesión en una lectura:**
+
+- `requireCoach` y `requireAthlete` usan `findRoleProfile` (`lib/db/profiles.ts`): perfil + datos del rol en una consulta, en lugar de tres en secuencia.
+- La decisión es pura (`profileAccess` en `lib/permissions`):
+  - sin perfil → `/auth/salir?error=perfil`;
+  - rol distinto → inicio de su rol.
+- El rol sigue saliendo de `profiles`, no del cliente ni solo del JWT. `cache` evita repetirla en la misma petición.
+
+**Consultas:**
+
+- `previewFeatures = ["relationJoins"]` en `prisma/schema.prisma`: Prisma resuelve `include`/`select` anidados con una sola consulta (JOIN LATERAL), en vez de una por nivel (~100 ms cada una contra Supabase).
+  - Es una función **preview** de Prisma 7. Se adoptó porque toda la suite (unitarias y e2e) pasa con ella.
+  - Si una actualización de Prisma la rompe, quitar la línea y regenerar (`npm run db:generate`) vuelve al comportamiento anterior sin migraciones.
+- **Pool:** `idleTimeoutMillis` de 5 min (`lib/db/prisma.ts`). Con el valor por defecto de `pg` (10 s), cada navegación tras una pausa abría una conexión TLS nueva con el pooler: 515–613 ms frente a ~102 ms reutilizándola.
+- **`athleteInclude`** (`lib/db/sessions.ts`) trae solo la asignación del propio atleta, no las de todos los atletas de cada sesión.
+- **Waterfalls eliminados:**
+  - `/atleta/sesiones` (en curso, hoy y próxima en paralelo);
+  - `/coach/inicio` (secciones independientes);
+  - `/coach/avisos` (conteo y lista en paralelo tras sincronizar).
+
+**Caché:**
+
+- **No se cachea ningún dato privado:** sesión, perfiles, atletas, resultados, avisos y progreso son por petición, y ningún `"use cache"` envuelve funciones que lean cookies, `connection()` o el usuario. `cache()` de React solo deduplica dentro de una petición; no comparte nada entre usuarios.
+- **Ejercicios del sistema:** se podrían cachear, pero la medición mostró que el costo está en los viajes de red de la sesión y las relaciones, no en esa consulta. Queda como opción si la biblioteca crece.
+
+**Estado HTTP (cierre de la fase 14).**
+
+Con Cache Components, Next envía primero el shell con estado 200. Un `notFound()` o un `redirect()` que ocurra dentro de la página llega por streaming: la UI y la URL final son correctas, pero el estado queda en 200 (con `noindex` en el 404). Ver "Status codes" en la documentación de `loading.js` de Next. Esto ya pasaba antes de la fase 14. Los códigos reales se deciden **antes** de renderizar:
+
+| Caso | Quién decide | Estado |
+|---|---|---|
+| Sin sesión o sesión inválida | `proxy.ts` (`resolveRouteAccess`) | **307** → `/login?next=<ruta>` |
+| Rol incorrecto | `proxy.ts` | **307** → inicio del rol |
+| Ruta inexistente | Next | **404** |
+| Detalle inexistente, mal formado o **ajeno**, en carga directa | `proxy.ts` → `isDetailVisible` | **404** |
+| Detalle propio | Página | **200** |
+| Redirecciones de negocio dentro de la página (p. ej. `ejecutar` → `resumen`) | Página (streaming) | 200 + URL final correcta |
+
+**Cómo funciona el 404 real de los detalles:**
+
+- **Qué rutas:** `lib/http/detail-routes.ts` (puro) reconoce las 13 rutas de detalle.
+- **Qué peticiones:** solo **cargas de documento** (`isDocumentRequest`). Eso incluye las que reenvía el service worker, que llegan con `Sec-Fetch-Dest: empty` pero `Accept: text/html`. La navegación cliente y el prefetch no pasan por la comprobación: muestran el mensaje dentro del shell, sin costo extra.
+- **Id mal formado:** 404 sin consultar la base de datos.
+- **UUID válido:** una consulta mínima (`lib/db/visibility.ts`) con las **mismas cláusulas** que las páginas. Están en `lib/db/access-rules.ts`, la fuente única que usan el DAL y el proxy, así que la regla no se duplica.
+- **Nunca es más estricta que la página:** si dice "visible", la página aún verifica todo. Si la base de datos falla, el proxy no bloquea y decide la página.
+- **Qué se muestra:** el proxy reescribe a una página 404 **prerenderizada** del área (`app/no-encontrado/coach/*` y `app/no-encontrado/atleta/*`, según `NOT_FOUND_PATH`). Esa página llama a `notFound()` durante el prerender, que según Next conserva el estado 404, y usa el **mismo shell** (`CoachChrome` o `AthleteShell`, sin gate: el proxy ya verificó sesión y rol) y el **mismo mensaje** que el `not-found.tsx` de la ruta (`components/shared/not-found-messages.tsx`).
+  - Visitar `/no-encontrado/*` directamente da el 404 genérico, porque el proxy solo las alcanza por reescritura.
+  - **No uses `headers()` ni nada dinámico en `app/not-found.tsx`:** es el límite raíz de todas las páginas y volvería parciales a `/login`, `/registro` y a las páginas offline que precachea el service worker. Se probó en este cierre y se descartó por eso.
+- **Costo:** +1 consulta mínima solo en cargas directas de un detalle.
+
+**Factor de producción:** en desarrollo local cada consulta cuesta ~100 ms porque la base de datos está en otra región. En producción, el servidor de la app debe desplegarse **en la misma región que el proyecto de Supabase** (ver `deployment.md`): es la mayor diferencia de latencia, por encima de cualquier cambio de código.
+
 ## Estados de pantalla
 
 Toda pantalla con datos envuelve su contenido en `ScreenStates` (`components/shared/screen-states.tsx`):

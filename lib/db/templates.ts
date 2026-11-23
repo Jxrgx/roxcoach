@@ -1,5 +1,6 @@
 import "server-only";
 
+import { coachTemplateWhere } from "@/lib/db/access-rules";
 import { db } from "@/lib/db/prisma";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import type { ExerciseCategoryValue } from "@/lib/exercises/rules";
@@ -71,7 +72,7 @@ export async function listTemplates(coachId: string): Promise<TemplateListItemDT
 }
 
 export async function findTemplateForCoach(coachId: string, id: string): Promise<TemplateDetailDTO | null> {
-  const t = await db().workoutTemplate.findFirst({ where: { id, coachId }, include: DETAIL_INCLUDE });
+  const t = await db().workoutTemplate.findFirst({ where: coachTemplateWhere(coachId, id), include: DETAIL_INCLUDE });
   if (!t) return null;
   return {
     id: t.id,

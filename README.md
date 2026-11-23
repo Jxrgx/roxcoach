@@ -64,12 +64,15 @@ Para probar el build de producción en local (`npm run build && npm start`) agre
 | `npm run lint` | ESLint |
 | `npm run typecheck` | Tipos de rutas + `tsc --noEmit` |
 | `npm test` | Pruebas unitarias (Vitest) |
+| `npm run check:instant` | Recorre las rutas contra tu `next dev` y falla con cualquier error de consola (validación de navegación instantánea de Next) |
+| `npm run measure:nav` | Mide la navegación entre módulos contra un servidor en marcha (ver docs/development-workflow.md) |
 | `npm run test:e2e` | Setup de usuarios de prueba + rutas en 5 anchos + flujos de autenticación (Playwright) |
 | `npm run build` | Build de producción (no requiere secretos) |
 | `npm run validate` | Lint + typecheck + pruebas unitarias + build |
 | `npm run db:generate` | Regenera el cliente de Prisma |
 | `npm run db:migrate` | Aplica migraciones pendientes (`prisma migrate deploy`) |
 | `npm run db:status` | Estado de las migraciones |
+| `npm run db:residue` | Reporte de solo lectura de datos de prueba (conteos, usuarios compartidos, residuos) |
 | `npm run db:audit` | Auditoría de solo lectura: RLS, privilegios, funciones y migraciones |
 | `npm run db:studio` | Explorador de datos de Prisma |
 
@@ -115,10 +118,12 @@ public/sw.js         Service worker mínimo (fase 12); reglas puras en public/sw
   security/          Cabeceras de seguridad HTTP y CSP (puras)
   http/              Origen público para enlaces absolutos (APP_URL)
   log.ts             Registro seguro (error/warn/info, sin datos sensibles)
+components/shared/page-skeletons.tsx  Fallbacks de Suspense por página (fase 14)
   mock/              Datos ficticios de los módulos aún no implementados
 prisma/              Esquema activo, migraciones y seed
 instrumentation.ts   Valida la configuración al arrancar en producción
 scripts/db-audit.mjs Auditoría de la base de datos (solo lectura)
+scripts/check-instant.mjs, measure-navigation.mjs  Validación de navegación instantánea y medición
 tests/unit, tests/e2e
 docs/                Arquitectura, flujo de trabajo, módulos, despliegue, seguridad y modelo futuro
 ```

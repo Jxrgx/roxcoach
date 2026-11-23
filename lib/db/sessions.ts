@@ -1,5 +1,6 @@
 import "server-only";
 
+import { athleteSessionWhere, coachSessionWhere } from "@/lib/db/access-rules";
 import { db } from "@/lib/db/prisma";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { findTemplateForCoach } from "@/lib/db/templates";
@@ -97,7 +98,7 @@ export async function listCoachSessions(coachId: string, from: string, to: strin
 
 export async function findCoachSession(coachId: string, id: string): Promise<CoachSessionDetailDTO | null> {
   const s = await db().scheduledSession.findFirst({
-    where: { id, coachId },
+    where: coachSessionWhere(coachId, id),
     include: {
       assignments: {
         where: { status: "asignada" },
@@ -264,12 +265,15 @@ export async function removeAthleteFromSession(coachId: string, sessionId: strin
 function athleteInclude(athleteId: string) {
   return {
     coach: { select: { profile: { select: { name: true } } } },
+    // Solo la asignación de ESTE atleta (antes se traían las de todos los atletas
+    // de la sesión para quedarse con una; nunca llegaban al cliente).
     assignments: {
+      where: { athleteId },
       select: {
         status: true,
         athleteId: true,
         log: { select: { status: true } },
-        overrides: { where: { assignment: { athleteId } }, select: OVERRIDE_SELECT },
+        overrides: { select: OVERRIDE_SELECT },
       },
     },
   } satisfies Prisma.ScheduledSessionInclude;
@@ -312,7 +316,7 @@ export async function listUpcomingAthleteSessions(athleteId: string, from: strin
 /** Detalle para el atleta: solo si tiene una asignación vigente en esa sesión. */
 export async function findAthleteSession(athleteId: string, id: string): Promise<AthleteSessionDTO | null> {
   const s = await db().scheduledSession.findFirst({
-    where: { id, assignments: { some: { athleteId, status: "asignada" } } },
+    where: athleteSessionWhere(athleteId, id),
     include: athleteInclude(athleteId),
   });
   return s ? toAthleteSession(athleteId, s) : null;

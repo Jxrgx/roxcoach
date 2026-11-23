@@ -1,6 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { createClient } from "@supabase/supabase-js";
-import { COACH_STATE, ATHLETE_STATE, collectErrors, dbQuery, e2eEnv, loginViaUi } from "./helpers";
+import { COACH_STATE, ATHLETE_STATE, collectErrors, dbQuery, e2eEnv, loginViaUi, readSeedIds } from "./helpers";
+import { deleteExactIds } from "./cleanup";
 
 function admin() {
   const env = e2eEnv();
@@ -314,7 +315,9 @@ test.describe("inyección de cabecera Host", () => {
       expect(text).not.toMatch(/evil\.example/);
       expect(text).toMatch(new RegExp(`${BASE_URL.replace(/[/.:]/g, "\\$&")}/invitacion/`));
     } finally {
-      await dbQuery(`delete from invitations where email = any($1::text[])`, [[email, forged]]);
+      // Solo las invitaciones de ESTA prueba: correos únicos generados aquí, del coach compartido, borradas por id exacto.
+      const own = await dbQuery<{ id: string }>(`select id from invitations where coach_id = $1 and email = any($2::text[])`, [readSeedIds().coachId, [email, forged]]);
+      await deleteExactIds("invitations", own.map((r) => r.id));
     }
   });
 });

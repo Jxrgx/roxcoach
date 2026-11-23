@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, CheckCircle2 } from "lucide-react";
@@ -10,12 +11,30 @@ import { ScreenStates } from "@/components/shared/screen-states";
 import { TemplatePreview } from "@/components/workouts/template-preview";
 import { TemplateStatusBadge } from "@/components/workouts/template-status";
 import { TemplateActions } from "@/components/coach/template-actions";
+import { DetailSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Plantilla" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function TemplateDetailPage({ params, searchParams }: PageProps<"/coach/entrenamientos/[id]">) {
+type Props = PageProps<"/coach/entrenamientos/[id]">;
+
+/** El enlace de regreso aparece al instante; la plantilla llega detrás de Suspense. */
+export default function TemplateDetailPage({ params, searchParams }: Props) {
+  return (
+    <div className="mx-auto max-w-3xl">
+      <Link href="/coach/entrenamientos" className="-ml-2 mb-3 inline-flex min-h-11 items-center gap-1.5 rounded-xl px-2 text-sm text-muted hover:text-ink">
+        <ArrowLeft aria-hidden className="size-4" />
+        Entrenamientos
+      </Link>
+      <Suspense fallback={<DetailSkeleton label="Cargando plantilla…" />}>
+        <TemplateDetail params={params} searchParams={searchParams} />
+      </Suspense>
+    </div>
+  );
+}
+
+async function TemplateDetail({ params, searchParams }: Pick<Props, "params" | "searchParams">) {
   const [{ id }, query, coach] = await Promise.all([params, searchParams, requireCoach()]);
   // Una plantilla ajena (o un id inválido) se ve igual que una inexistente.
   const template = UUID_RE.test(id) ? await findTemplateForCoach(coach.id, id) : null;
@@ -29,12 +48,7 @@ export default async function TemplateDetailPage({ params, searchParams }: PageP
       : [];
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <Link href="/coach/entrenamientos" className="-ml-2 mb-3 inline-flex min-h-11 items-center gap-1.5 rounded-xl px-2 text-sm text-muted hover:text-ink">
-        <ArrowLeft aria-hidden className="size-4" />
-        Entrenamientos
-      </Link>
-
+    <>
       {query.guardado === "1" && (
         <p role="status" className="mb-4 flex items-center gap-2 rounded-2xl border border-positive/30 bg-positive/10 p-3.5 text-sm text-ink">
           <CheckCircle2 aria-hidden className="size-4 shrink-0 text-positive" />
@@ -96,6 +110,6 @@ export default async function TemplateDetailPage({ params, searchParams }: PageP
           }}
         />
       </ScreenStates>
-    </div>
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -8,13 +9,23 @@ import { mondayOf, todayKey } from "@/lib/scheduling/dates";
 import { APP_TIME_ZONE } from "@/lib/utils/format";
 import { ScreenStates } from "@/components/shared/screen-states";
 import { AthleteSessionDetail } from "@/components/athlete/athlete-session-detail";
+import { DetailSkeleton } from "@/components/shared/page-skeletons";
 
 export const metadata: Metadata = { title: "Sesión" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** El contenido depende de la sesión y de la URL: llega detrás de Suspense (fase 14). */
+export default function AthleteSessionPage({ params }: PageProps<"/atleta/sesiones/[id]">) {
+  return (
+    <Suspense fallback={<DetailSkeleton label="Cargando sesión…" />}>
+      <AthleteSessionPageContent params={params} />
+    </Suspense>
+  );
+}
+
 /** Detalle de una sesión asignada (solo si el atleta tiene una asignación vigente). */
-export default async function AthleteSessionPage({ params }: PageProps<"/atleta/sesiones/[id]">) {
+async function AthleteSessionPageContent({ params }: { params: PageProps<"/atleta/sesiones/[id]">["params"] }) {
   const [{ id }, athlete] = await Promise.all([params, requireAthlete()]);
   const session = UUID_RE.test(id) ? await findAthleteSession(athlete.id, id) : null;
   if (!session) notFound();

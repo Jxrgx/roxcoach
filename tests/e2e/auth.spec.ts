@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { ATHLETE_STATE, COACH_STATE, e2eEnv, loginViaUi } from "./helpers";
 
 test.describe("sin sesión", () => {
