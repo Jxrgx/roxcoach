@@ -43,14 +43,22 @@ export async function listCoachAthletes(coachId: string): Promise<RosterAthleteD
     include: { athlete: { include: { profile: true } } },
     orderBy: [{ status: "asc" }, { joinedAt: "desc" }],
   });
-  return rows.map((r) => ({
-    athleteId: r.athleteId,
-    name: r.athlete.profile.name,
-    email: r.athlete.profile.email,
-    division: r.athlete.division ?? "",
-    status: r.status as "active" | "paused",
-    joinedAt: r.joinedAt.toISOString(),
-  }));
+  // Prisma resuelve relaciones con consultas separadas: si el atleta se borra
+  // entre ellas, athlete/profile llegan como null. Se descarta esa fila.
+  return rows.flatMap((r) => {
+    const profile = r.athlete?.profile;
+    if (!profile) return [];
+    return [
+      {
+        athleteId: r.athleteId,
+        name: profile.name,
+        email: profile.email,
+        division: r.athlete.division ?? "",
+        status: r.status as "active" | "paused",
+        joinedAt: r.joinedAt.toISOString(),
+      },
+    ];
+  });
 }
 
 /** Detalle de un atleta del coach, o null si no está relacionado con él. */
@@ -59,7 +67,7 @@ export async function findCoachAthlete(coachId: string, athleteId: string): Prom
     where: { coachId, athleteId, status: CURRENT },
     include: { athlete: { include: { profile: true } } },
   });
-  if (!r) return null;
+  if (!r?.athlete?.profile) return null;
   return {
     athleteId: r.athleteId,
     name: r.athlete.profile.name,
@@ -80,7 +88,7 @@ export async function findAthleteCoach(athleteId: string): Promise<(AthleteCoach
     where: { athleteId, status: CURRENT },
     include: { coach: { include: { profile: true } } },
   });
-  if (!r) return null;
+  if (!r?.coach?.profile) return null;
   return {
     coachId: r.coachId,
     coachName: r.coach.profile.name,

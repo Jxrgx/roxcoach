@@ -266,6 +266,35 @@ Completa la cadena del dominio: **asignación → registro realizado**. Lo plane
 
 **Interfaz:** orden "¿estoy cumpliendo? → ¿cómo evoluciono? → ¿hay algo que atender?". Adherencia en amarillo como métrica principal; azul eléctrico para tendencias y marcas; barras simples con una tabla oculta para lectores de pantalla y un resumen en texto. Periodo con enlaces (`PeriodTabs`); filtros del coach como formulario GET en un `BottomSheet` (mobile) o en línea (desde tablet). Componentes en `components/progress/`.
 
+## Avisos operativos (fase 9)
+
+**Por qué una tabla:** los eventos se detectan con las tablas existentes, pero el estado leído/no leído y el historial necesitan persistirse. `coach_alerts` guarda solo el aviso (título, descripción, prioridad, fecha del evento, `read_at`), no métricas.
+
+**Modelo** (migraciones `add_coach_alerts`, `drop_alert_read_check` y `add_alert_resolved_at`):
+- `coach_id` (cascada), `athlete_id` y `session_id` con `SET NULL` + `athlete_name` copiado: si se borra el atleta o la sesión, el aviso queda como historial sin enlace.
+- `kind` (enum `alert_kind`), `source_id` (molestia, registro de sesión, asignación o invitación), `priority` 1–4, `event_at`, `read_at`.
+- **Idempotencia:** `UNIQUE (coach_id, kind, source_id)` + `createMany({ skipDuplicates })` (ON CONFLICT DO NOTHING). Recalcular nunca duplica ni vuelve a marcar como no leído.
+- CHECK de prioridad y longitudes; RLS sin políticas. (Se eliminó un CHECK `read_at >= created_at` porque mezclaba el reloj del servidor de la app con el de la BD.)
+
+**Generación** (`syncCoachAlerts`, una vez por petición con `cache()`): al cargar la bandeja, el Inicio o el contador del layout. Solo atletas con relación `active`, solo sesiones del coach y solo eventos de los últimos 30 días. Las reglas son puras (`lib/alerts/rules.ts`):
+
+| Tipo | Origen | Prioridad |
+| --- | --- | --- |
+| `molestia` | `discomfort_reports` (también si la sesión se canceló después: es una señal de salud) | 1 Prioritaria |
+| `sesion_incompleta` | registro completado con menos series que el snapshot | 2 Revisar |
+| `rpe_alto` | registro completado con RPE ≥ 9 | 2 Revisar |
+| `en_curso_prolongada` | registro en curso iniciado hace más de 5 h | 2 Revisar |
+| `no_iniciada` | asignación vigente de un día ya pasado sin registro | 3 Seguimiento |
+| `relacion_aceptada` | invitación aceptada | 4 Información |
+
+Salvo molestias, se excluyen sesiones canceladas y asignaciones retiradas.
+
+**Resolución:** cada sincronización revisa los avisos `no_iniciada` sin resolver: si la asignación ya tiene registro (en curso, abandonada o completada), la sesión se canceló, se retiró al atleta o la asignación ya no existe, recibe `resolved_at` (`UPDATE … WHERE resolved_at IS NULL`, idempotente). **Pendiente = `read_at` y `resolved_at` nulos**: lo usan la bandeja "Sin leer", el contador y el Inicio. Resolver nunca toca `read_at` (un leído sigue leído) y el aviso queda en "Todos" marcado como "Resuelto".
+
+**Visibilidad y permisos:** todo filtra por el `coach_id` de la sesión. Se muestran avisos de atletas que hoy están **activos** con el coach (los de atletas en pausa se ocultan y se conservan) o cuyo atleta ya no existe. Marcar como leído busca el aviso dentro de ese filtro: un id ajeno responde "no existe". Los enlaces llevan a pantallas que ya validan la propiedad.
+
+**Interfaz:** `/coach/avisos` (acción principal "Marcar todos como leídos", filtros GET en `BottomSheet`/en línea, historial en "Leídos"); 3 avisos sin leer en Inicio con "Ver todos"; contador como slot de servidor en `CoachShell` (campana en mobile, enlace "Avisos" en la barra lateral) con nombre accesible "Avisos, N sin leer". Cada prioridad tiene icono, texto, etiqueta accesible y color de apoyo; las molestias muestran "Reporte del atleta; no constituye un diagnóstico médico."
+
 ## Estados de pantalla
 
 Toda pantalla con datos envuelve su contenido en `ScreenStates` (`components/shared/screen-states.tsx`):

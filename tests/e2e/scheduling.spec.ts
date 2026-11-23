@@ -57,6 +57,8 @@ async function insertPublishedTemplate(name: string, coachId = readSeedIds().coa
 
 /** Limpieza (la app nunca borra; las pruebas sí): sesiones (y asignaciones) y plantillas. */
 async function cleanup(prefix: string) {
+  // Avisos de la fase 9 ligados a estas sesiones (si no, quedarían como historial huérfano).
+  await dbQuery(`delete from coach_alerts where session_id in (select id from scheduled_sessions where title like $1)`, [`${prefix}%`]);
   await dbQuery(`delete from scheduled_sessions where title like $1`, [`${prefix}%`]);
   await dbQuery(`delete from workout_templates where name like $1`, [`${prefix}%`]);
 }
@@ -75,6 +77,9 @@ function track(prefix: string) {
 test.afterEach(async () => {
   for (const prefix of created.prefixes.splice(0)) await cleanup(prefix);
   for (const id of created.users.splice(0)) {
+    // Primero la relación (deja de ser atleta activo: la sincronización ya no genera avisos), luego sus avisos.
+    await dbQuery(`delete from coach_athletes where athlete_id = $1`, [id]);
+    await dbQuery(`delete from coach_alerts where athlete_id = $1 or coach_id = $1`, [id]);
     const { error } = await admin().auth.admin.deleteUser(id);
     if (error && !/not.*found/i.test(error.message)) throw new Error(`No se pudo borrar el usuario de prueba: ${error.message}`);
   }

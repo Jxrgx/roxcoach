@@ -63,6 +63,7 @@ model CoachProfile {
   exercises   Exercise[]
   templates   WorkoutTemplate[]
   sessions    ScheduledSession[]
+  alerts      CoachAlert[]
 
   @@map("coach_profiles")
 }
@@ -81,6 +82,7 @@ model AthleteProfile {
   coaches             CoachAthlete[]
   acceptedInvitations Invitation[]
   assignments         Assignment[]
+  alerts              CoachAlert[]
 
   @@map("athlete_profiles")
 }
@@ -348,6 +350,7 @@ model ScheduledSession {
   updatedAt     DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   assignments Assignment[]
+  alerts      CoachAlert[]
 
   @@index([coachId, scheduledDate])
   @@map("scheduled_sessions")
@@ -470,4 +473,51 @@ model DiscomfortReport {
 
   @@index([sessionLogId])
   @@map("discomfort_reports")
+}
+
+// ============================================================================
+// Avisos operativos del coach (fase 9). Se generan de forma idempotente a
+// partir de datos reales (molestias, ejecuciones, asignaciones, invitaciones);
+// la tabla guarda el aviso y si ya se leyó, para conservar el historial.
+// ============================================================================
+
+enum AlertKind {
+  molestia
+  sesion_incompleta
+  rpe_alto
+  en_curso_prolongada
+  no_iniciada
+  relacion_aceptada
+
+  @@map("alert_kind")
+}
+
+model CoachAlert {
+  id          String            @id @default(uuid()) @db.Uuid
+  coachId     String            @map("coach_id") @db.Uuid
+  coach       CoachProfile      @relation(fields: [coachId], references: [profileId], onDelete: Cascade)
+  /// SET NULL: el aviso sobrevive (con athlete_name) si se borra la cuenta del atleta.
+  athleteId   String?           @map("athlete_id") @db.Uuid
+  athlete     AthleteProfile?   @relation(fields: [athleteId], references: [profileId], onDelete: SetNull)
+  sessionId   String?           @map("session_id") @db.Uuid
+  session     ScheduledSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  kind        AlertKind
+  /// Registro que originó el aviso (molestia, registro de sesión, asignación o invitación).
+  sourceId    String            @map("source_id") @db.Uuid
+  /// 1 prioritaria · 2 revisar · 3 seguimiento · 4 información.
+  priority    Int
+  title       String
+  description String
+  athleteName String            @map("athlete_name")
+  /// Cuándo ocurrió el evento de origen (no cuándo se generó el aviso).
+  eventAt     DateTime          @map("event_at") @db.Timestamptz(6)
+  readAt      DateTime?         @map("read_at") @db.Timestamptz(6)
+  /// Ya no requiere atención (p. ej. la sesión "no iniciada" se comenzó, se canceló o se retiró al atleta).
+  /// No toca read_at: un aviso leído sigue leído; uno resuelto sale de pendientes y queda en el historial.
+  resolvedAt  DateTime?         @map("resolved_at") @db.Timestamptz(6)
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([coachId, kind, sourceId])
+  @@index([coachId, readAt])
+  @@map("coach_alerts")
 }

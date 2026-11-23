@@ -409,3 +409,15 @@ export function coachOverview(athletes: AthleteProgressInput[], period: Period, 
     discomfortCount: rows.filter((r) => r.discomforts > 0).length,
   };
 }
+
+/**
+ * "Atletas con pendientes" (Inicio del coach): sesiones vencidas del periodo
+ * sin completar (no realizadas o abandonadas). Primero baja adherencia y
+ * después quien acumula más.
+ */
+export function pendingAthletes(rows: AthleteProgressRow[]): (AthleteProgressRow & { pendingCount: number })[] {
+  return rows
+    .map((r) => ({ ...r, pendingCount: r.adherence.missed + r.adherence.abandoned }))
+    .filter((r) => r.pendingCount > 0)
+    .sort((a, b) => Number(b.low) - Number(a.low) || b.pendingCount - a.pendingCount || a.name.localeCompare(b.name, "es"));
+}

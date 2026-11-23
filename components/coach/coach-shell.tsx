@@ -153,17 +153,22 @@ function MobileNavActive() {
 }
 
 /**
- * Shell del coach. La navegación es estática; `profileCard` y `mobileProfile`
- * son slots que el servidor llena con el perfil real (detrás de Suspense).
+ * Shell del coach. La navegación es estática; `profileCard`, `mobileProfile` y
+ * los avisos son slots que el servidor llena con datos reales (detrás de Suspense).
  */
 export function CoachShell({
   children,
   profileCard,
   mobileProfile,
+  alertsDesktop,
+  alertsMobile,
 }: {
   children: ReactNode;
   profileCard: ReactNode;
   mobileProfile: ReactNode;
+  /** Enlace a Avisos con el contador (lo llena el servidor). */
+  alertsDesktop: ReactNode;
+  alertsMobile: ReactNode;
 }) {
   return (
     <>
@@ -184,6 +189,7 @@ export function CoachShell({
         <div className="px-4">
           <NewSessionButton fullWidth variant="secondary" />
         </div>
+        <div className="mt-3 px-3">{alertsDesktop}</div>
         <nav aria-label="Navegación principal" className="mt-5 flex-1 overflow-y-auto px-3">
           <Suspense fallback={<SidebarNavList pathname="" />}>
             <SidebarNavActive />
@@ -197,7 +203,10 @@ export function CoachShell({
         <Link href="/coach/inicio" aria-label="RoxCoach, ir a inicio" className="inline-flex min-h-11 items-center">
           <Logo />
         </Link>
-        {mobileProfile}
+        <div className="flex items-center gap-1">
+          {alertsMobile}
+          {mobileProfile}
+        </div>
       </header>
 
       <div className="md:pl-56 lg:pl-64">

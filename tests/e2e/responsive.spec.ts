@@ -25,6 +25,7 @@ const ROUTES = [
   "/coach/entrenamientos",
   "/coach/entrenamientos/nueva",
   "/coach/progreso",
+  "/coach/avisos",
   "/coach/mensajes",
   "/coach/configuracion",
   "/atleta/inicio",

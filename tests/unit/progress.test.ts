@@ -10,6 +10,7 @@ import {
   inPeriod,
   isLowAdherence,
   parsePeriod,
+  pendingAthletes,
   periodStart,
   recentDiscomforts,
   trainingTime,
@@ -257,5 +258,25 @@ describe("resumen del coach", () => {
   it("filtra por estado", () => {
     expect(coachOverview([good, low, hurt], "7", TODAY, "baja").rows.map((r) => r.name)).toEqual(["Beto"]);
     expect(coachOverview([good, low, hurt], "7", TODAY, "molestias").rows.map((r) => r.name)).toEqual(["Caro"]);
+  });
+});
+
+describe("atletas con pendientes (Inicio del coach)", () => {
+  it("solo quien tiene sesiones vencidas sin completar; primero baja adherencia", () => {
+    const ok = { athleteId: "a1", name: "Ana", relationStatus: "active" as const, records: [rec("2026-11-22", { done: "2026-11-22T15:00:00Z" })] };
+    const missedOne = { athleteId: "a2", name: "Beto", relationStatus: "active" as const, records: [rec("2026-11-22", { done: "2026-11-22T15:00:00Z" }), rec("2026-11-23")] };
+    const low = {
+      athleteId: "a3",
+      name: "Caro",
+      relationStatus: "active" as const,
+      records: [rec("2026-11-20"), rec("2026-11-21", { started: true }), rec("2026-11-22", { done: "2026-11-22T15:00:00Z" })],
+    };
+    const cancelledOnly = { athleteId: "a4", name: "Dani", relationStatus: "active" as const, records: [rec("2026-11-22", { sessionStatus: "cancelada" })] };
+    const rows = coachOverview([ok, missedOne, low, cancelledOnly], "30", TODAY, "todos").rows;
+    const pending = pendingAthletes(rows);
+    expect(pending.map((p) => [p.name, p.pendingCount, p.low])).toEqual([
+      ["Caro", 2, true],
+      ["Beto", 1, false],
+    ]);
   });
 });

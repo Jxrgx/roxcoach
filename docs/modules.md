@@ -1,6 +1,6 @@
 # Módulos
 
-## Estado actual (fase 8)
+## Estado actual (fase 9)
 
 | Módulo | Estado | Notas |
 | --- | --- | --- |
@@ -18,6 +18,7 @@
 | Programación y asignación | ✅ Validada con Supabase | Programar una plantilla **publicada** en una fecha (hoy a un año) con hora opcional, título y notas, para 1–50 atletas **activos**. La sesión guarda un **snapshot** congelado de la plantilla: editarla después no cambia lo programado. El coach ve la semana en el Calendario (`?semana=`, filtro por estado) y el detalle de la sesión; puede editar fecha, hora, título y notas, cancelar (con confirmación, se conserva el historial), agregar y quitar atletas. El atleta ve sus sesiones en Inicio, Agenda semanal, Entrenamiento y el detalle (bloques en acordeón, enlace a cada ejercicio, equipo necesario). Las canceladas se muestran como tales |
 | Ejecución del entrenamiento | ✅ Validada con Supabase | El atleta comienza una sesión asignada de hoy o de días anteriores (no futuras ni canceladas). Ve bloque, ejercicio y "Serie N de M" con lo planeado (solo lectura) y registra lo realizado (reps, distancia o tiempo según el plan, carga en su unidad y RPE opcional). Descanso planeado en cuenta regresiva, pausa y reanudación guardadas en el servidor (recargar continúa donde se quedó), volver a una serie para corregirla, finalizar con confirmación (las faltantes quedan como no realizadas) y resumen con planeado vs. realizado, RPE general y comentario (lo único editable al terminar). Reporte de molestia por zona, intensidad y nota. El coach ve en la sesión quién no la ha iniciado, la tiene en curso o la completó, alertas de molestia y los resultados de cada atleta |
 | Progreso y métricas | ✅ Validado con Supabase | Solo datos reales; excluye sesiones canceladas y asignaciones retiradas. **Atleta** (`/atleta/progreso`): adherencia del periodo (7/30/90 días o todo) con desglose (asignadas, iniciadas, completadas, no realizadas, abandonadas, en curso o pendientes), completadas en 7/30/90 días, tiempo entrenado, RPE promedio, marcas personales y evolución por ejercicio (mismo ejercicio y objetivo; estaciones HYROX por id) y molestias. **Coach** (`/coach/progreso`): adherencia del grupo, atletas que requieren atención (baja adherencia < 70 % con ≥ 3 sesiones, molestias), lista por atleta y filtros por periodo, atleta y estado (panel inferior en mobile); detalle por atleta (`/coach/progreso/[id]`) con planeado vs. realizado. Cada métrica indica periodo, sesiones usadas y si los datos son insuficientes |
+| Avisos operativos | ✅ Validado con Supabase | Bandeja `/coach/avisos` con avisos de atletas activos del coach, solo de datos reales de los últimos 30 días: molestia (prioritaria, con aviso de que no es un diagnóstico médico), sesión finalizada incompleta, RPE alto (≥ 9), sesión en curso más de 5 h, sesión no iniciada y nuevo atleta. Orden por prioridad y fecha; filtros por estado (sin leer, leídos, todos) y tipo en panel inferior (mobile); marcar uno o todos como leídos con historial. Los avisos de sesión no iniciada se resuelven solos cuando el atleta la comienza, se cancela o se le retira (quedan en el historial). Resumen de los 3 más importantes en Inicio y contador en la navegación (campana en mobile, "Avisos" en la barra lateral). Sin correo, push ni tiempo real |
 | PWA | 🟡 Preparada | Manifest e icono; sin service worker |
 | Base de datos | 🟡 En crecimiento | Prisma 7 + PostgreSQL: identidad, perfiles, atletas e invitaciones, ejercicios, plantillas, sesiones programadas, asignaciones y registros realizados (sesión, series y molestias). Pendiente (mensajes) en `docs/data-model-draft.prisma` |
 
@@ -28,7 +29,7 @@
 | Mensajes | Agregan el mensaje localmente. No se envía. |
 | Eliminar cuenta | Pide confirmación y avisa que aún no está disponible. No elimina nada. |
 | Nuevo mensaje | Abre un aviso que indica qué hará la acción y en qué módulo llegará. |
-| Mensajes e indicadores de Inicio del coach (atletas recientes, comentarios, adherencia) | Siguen con datos ficticios de `lib/mock`. |
+| Mensajes | Siguen con datos ficticios de `lib/mock`. El Inicio del coach ya usa solo datos reales (sesiones de hoy, avisos, atletas con sesiones vencidas sin completar y adherencia del equipo de los últimos 30 días). |
 
 ## Módulos planeados para el MVP
 

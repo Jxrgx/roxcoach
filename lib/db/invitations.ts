@@ -107,7 +107,7 @@ export async function viewInvitation(
   const current = account?.role === "athlete" ? await db().coachAthlete.findFirst({ where: { athleteId: account.id, status: { in: ["active", "paused"] } }, select: { coachId: true } }) : null;
 
   return {
-    coachName: inv.coach.profile.name,
+    coachName: inv.coach?.profile?.name ?? "Tu coach",
     gymName: inv.coach.gymName ?? "",
     email: inv.email,
     name: inv.name ?? "",

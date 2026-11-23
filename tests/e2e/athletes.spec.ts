@@ -35,8 +35,14 @@ async function createUser(email: string, role: "coach" | "athlete", name: string
 /** Borra un usuario de prueba; falla si no se pudo (p. ej. por una restricción de la BD). */
 async function deleteUser(id: string | undefined) {
   if (!id) return;
+  // Avisos de la fase 9 ("nuevo atleta"): se buscan por la invitación que aceptó.
+  // Se borran DESPUÉS de borrar al usuario: así otra prueba en paralelo no puede
+  // regenerarlos entre medio (sin atleta, la invitación ya no genera avisos).
+  const accepted = await dbQuery<{ id: string }>(`select id from invitations where accepted_by_id = $1`, [id]);
+  await dbQuery(`delete from coach_alerts where athlete_id = $1`, [id]);
   const { error } = await admin().auth.admin.deleteUser(id);
   if (error) throw new Error(`No se pudo borrar el usuario de prueba: ${error.message}`);
+  if (accepted.length) await dbQuery(`delete from coach_alerts where kind = 'relacion_aceptada' and source_id = any($1::uuid[])`, [accepted.map((r) => r.id)]);
 }
 
 async function newContext(browser: Browser, storageState?: string): Promise<BrowserContext> {

@@ -70,38 +70,6 @@ export const mockAthletes: Athlete[] = [
   },
 ];
 
-export interface CoachComment {
-  id: string;
-  athleteName: string;
-  sessionName: string;
-  text: string;
-  when: string;
-}
-
-export const mockRecentComments: CoachComment[] = [
-  {
-    id: "c-1",
-    athleteName: "Daniela R.",
-    sessionName: "Simulación parcial",
-    text: "Los wall balls se me complicaron después del remo, bajé a series de 15.",
-    when: "Hace 2 h",
-  },
-  {
-    id: "c-2",
-    athleteName: "Jorge M.",
-    sessionName: "Intervalos 1 km",
-    text: "Mantuve 3:25 en todas las repeticiones. RPE 8.",
-    when: "Ayer",
-  },
-  {
-    id: "c-3",
-    athleteName: "Luis A.",
-    sessionName: "Fuerza + Wall Balls",
-    text: "Molestia ligera en rodilla izquierda en lunges.",
-    when: "Ayer",
-  },
-];
-
 export interface Conversation {
   id: string;
   athleteId: string;
@@ -142,10 +110,3 @@ export const mockConversations: Conversation[] = [
     ],
   },
 ];
-
-export const mockCoachProgress = {
-  completedSessions: { done: 38, planned: 45 },
-  adherence: 84,
-  bestTime: { label: "Simulación HYROX completa", value: "1:04:52", athlete: "Jorge M." },
-  bestLoad: { label: "Sled Push 4 × 12.5 m", value: "232 kg", athlete: "Sofía T." },
-};

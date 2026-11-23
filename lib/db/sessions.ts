@@ -263,7 +263,7 @@ function toAthleteSession(athleteId: string, s: Prisma.ScheduledSessionGetPayloa
   return {
     ...toSummary(s),
     notes: s.notes ?? "",
-    coachName: s.coach.profile.name,
+    coachName: s.coach?.profile?.name ?? "Tu coach",
     snapshot: parseSnapshot(s.snapshot) ?? EMPTY_SNAPSHOT,
     execution: own?.log?.status ?? "sin_iniciar",
   };

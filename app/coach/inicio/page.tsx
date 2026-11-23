@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertCircle, MessageSquare } from "lucide-react";
+import { ChevronRight, Info, TrendingDown } from "lucide-react";
 import { requireCoach } from "@/lib/auth/session";
-import { mockAthletes, mockCoachProgress, mockRecentComments } from "@/lib/mock/coach";
+import { countUnreadAlerts, listCoachAlerts, syncCoachAlerts } from "@/lib/db/alerts";
+import { listCoachProgressAthletes, listCoachProgressRecords } from "@/lib/db/progress";
 import { listCoachSessions } from "@/lib/db/sessions";
+import { coachOverview, pendingAthletes, percent, PERIOD_LABEL } from "@/lib/progress/metrics";
 import { todayKey } from "@/lib/scheduling/dates";
 import { APP_TIME_ZONE } from "@/lib/utils/format";
+import { AlertItem } from "@/components/alerts/alert-item";
 import { PageHeader } from "@/components/shared/page-header";
 import { TodayLabel } from "@/components/shared/today-label";
 import { ScreenStates } from "@/components/shared/screen-states";
@@ -18,12 +21,35 @@ import { Badge } from "@/components/ui/badge";
 
 export const metadata: Metadata = { title: "Inicio" };
 
+/** Periodo de los indicadores de Inicio (el mismo cálculo que Progreso). */
+const PERIOD = "30" as const;
+
+/**
+ * Inicio del coach, solo con datos reales: sesiones de hoy, avisos, atletas con
+ * sesiones vencidas sin completar y adherencia del equipo (últimos 30 días).
+ */
 export default async function CoachHomePage() {
   const coach = await requireCoach();
   const firstName = coach.name.split(" ")[0];
-  const today = await listCoachSessions(coach.id, todayKey(APP_TIME_ZONE), todayKey(APP_TIME_ZONE));
-  const pending = mockAthletes.filter((a) => a.status === "pendiente");
-  const { done, planned } = mockCoachProgress.completedSessions;
+  const todayDay = todayKey(APP_TIME_ZONE);
+  const [today, athletes] = await Promise.all([listCoachSessions(coach.id, todayDay, todayDay), listCoachProgressAthletes(coach.id), syncCoachAlerts(coach.id)]);
+  // Solo los avisos más importantes; el resto vive en /coach/avisos.
+  const [topAlerts, unreadAlerts, records] = await Promise.all([
+    listCoachAlerts(coach.id, { read: "sin-leer", kind: null, take: 3 }),
+    countUnreadAlerts(coach.id),
+    listCoachProgressRecords(
+      coach.id,
+      athletes.map((a) => a.athleteId),
+    ),
+  ]);
+  const overview = coachOverview(
+    athletes.map((a) => ({ ...a, records: records.get(a.athleteId) ?? [] })),
+    PERIOD,
+    todayDay,
+    "todos",
+  );
+  const pending = pendingAthletes(overview.rows).slice(0, 5);
+  const group = overview.group;
 
   return (
     <>
@@ -78,31 +104,72 @@ export default async function CoachHomePage() {
               )}
             </section>
 
+            <section aria-labelledby="avisos-inicio">
+              <SectionHeader
+                id="avisos-inicio"
+                title={`Avisos (${unreadAlerts})`}
+                action={
+                  <Link href="/coach/avisos" className="inline-flex min-h-11 items-center text-sm font-medium text-electric hover:underline">
+                    Ver todos
+                  </Link>
+                }
+              />
+              {topAlerts.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-line p-4 text-sm text-muted">Sin avisos pendientes. Todo en orden con tus atletas.</p>
+              ) : (
+                <ul className="flex flex-col gap-3">
+                  {topAlerts.map((a) => (
+                    <li key={a.id}>
+                      <AlertItem alert={a} compact />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
             <section aria-labelledby="pendientes">
               <SectionHeader
                 id="pendientes"
                 title="Atletas con pendientes"
                 action={
-                  <Link href="/coach/atletas" className="inline-flex min-h-11 items-center text-sm font-medium text-electric hover:underline">
-                    Ver atletas
+                  <Link href="/coach/progreso" className="inline-flex min-h-11 items-center text-sm font-medium text-electric hover:underline">
+                    Ver progreso
                   </Link>
                 }
               />
-              {pending.length === 0 ? (
-                <p className="text-sm text-muted">Todos tus atletas van al día.</p>
+              <p className="-mt-1 mb-3 text-sm text-muted">Sesiones vencidas sin completar · {PERIOD_LABEL[PERIOD].toLowerCase()}.</p>
+              {athletes.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-line p-4 text-sm text-muted">Todavía no tienes atletas en tu equipo.</p>
+              ) : pending.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-line p-4 text-sm text-muted">
+                  {group.due === 0 ? "Aún no hay sesiones vencidas para evaluar." : "Ningún atleta tiene sesiones vencidas sin completar."}
+                </p>
               ) : (
                 <Card padding="none">
                   <ul className="divide-y divide-line">
                     {pending.map((a) => (
-                      <li key={a.id} className="flex items-center gap-3 px-4 py-3">
-                        <Avatar name={a.name} size="sm" />
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-ink">{a.name}</p>
-                          <p className="truncate text-sm text-muted">{a.nextSessionLabel ?? "Sin sesión asignada"}</p>
-                        </div>
-                        <Badge tone="warning" icon={<AlertCircle aria-hidden />}>
-                          {a.adherence}% adherencia
-                        </Badge>
+                      <li key={a.athleteId}>
+                        <Link
+                          href={`/coach/progreso/${a.athleteId}`}
+                          aria-label={`Ver progreso de ${a.name}`}
+                          className="group flex min-h-14 items-center gap-3 px-4 py-3 hover:bg-surface-2/60"
+                        >
+                          <Avatar name={a.name} size="sm" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-medium break-words text-ink">{a.name}</span>
+                            <span className="block text-sm text-muted">
+                              {a.pendingCount} {a.pendingCount === 1 ? "sesión sin completar" : "sesiones sin completar"}
+                              {a.adherence.rate !== null && ` · ${percent(a.adherence.rate)}% adherencia`}
+                              {!a.adherence.sufficient && " · datos insuficientes"}
+                            </span>
+                          </span>
+                          {a.low && (
+                            <Badge tone="warning" icon={<TrendingDown aria-hidden />}>
+                              Baja adherencia
+                            </Badge>
+                          )}
+                          <ChevronRight aria-hidden className="size-4 shrink-0 text-muted group-hover:text-ink" />
+                        </Link>
                       </li>
                     ))}
                   </ul>
@@ -115,41 +182,24 @@ export default async function CoachHomePage() {
             <section aria-labelledby="adherencia">
               <SectionHeader id="adherencia" title="Adherencia general" />
               <Card>
-                <p className="text-4xl font-bold tabular-nums text-ink">{mockCoachProgress.adherence}%</p>
-                <p className="mt-1 text-sm text-muted">
-                  {done} de {planned} sesiones completadas en las últimas 4 semanas
+                {group.rate === null ? (
+                  <p className="text-lg font-semibold text-ink">Aún no hay datos suficientes</p>
+                ) : (
+                  <>
+                    <p className="text-4xl font-bold tabular-nums text-ink">{percent(group.rate)}%</p>
+                    <ProgressBar className="mt-4" value={group.completed} max={Math.max(1, group.due)} label="Sesiones completadas del equipo" />
+                  </>
+                )}
+                <p className="mt-2 text-sm text-muted">
+                  {group.completed} de {group.due} sesiones vencidas completadas · {PERIOD_LABEL[PERIOD].toLowerCase()}
                 </p>
-                <ProgressBar className="mt-4" value={done} max={planned} label="Sesiones completadas" />
+                {!group.sufficient && (
+                  <p className="mt-1 inline-flex items-center gap-1 text-sm text-warning">
+                    <Info aria-hidden className="size-3.5" />
+                    Datos insuficientes (menos de 3 sesiones vencidas)
+                  </p>
+                )}
               </Card>
-            </section>
-
-            <section aria-labelledby="comentarios">
-              <SectionHeader
-                id="comentarios"
-                title="Comentarios recientes"
-                action={
-                  <Link href="/coach/mensajes" className="inline-flex min-h-11 items-center text-sm font-medium text-electric hover:underline">
-                    Mensajes
-                  </Link>
-                }
-              />
-              <ul className="flex flex-col gap-3">
-                {mockRecentComments.map((c) => (
-                  <li key={c.id}>
-                    <Card padding="sm">
-                      <div className="flex items-center justify-between gap-2 text-sm">
-                        <span className="font-semibold text-ink">{c.athleteName}</span>
-                        <span className="shrink-0 text-muted">{c.when}</span>
-                      </div>
-                      <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
-                        <MessageSquare aria-hidden className="size-3.5" />
-                        {c.sessionName}
-                      </p>
-                      <p className="mt-2 text-sm text-ink">{c.text}</p>
-                    </Card>
-                  </li>
-                ))}
-              </ul>
             </section>
           </div>
         </div>

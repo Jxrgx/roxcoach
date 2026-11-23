@@ -24,6 +24,11 @@
 //                   assignments, scheduled_sessions (snapshot), session_logs,
 //                   set_logs y discomfort_reports (lib/progress). No se guardan
 //                   métricas derivadas.
+//   [FASE 9]        avisos: CoachAlert (coach_alerts). Avisos generados de forma
+//                   idempotente desde datos reales (UNIQUE coach + tipo + origen),
+//                   con estado leído, resolución automática (resolved_at) e
+//                   historial (atleta y sesión con SET NULL y copia del nombre)
+//                   — ver prisma/schema.prisma.
 //   [FUTURO]        diseño previsto; puede cambiar al implementarse.
 //
 // Separación obligatoria del dominio (CLAUDE.md):
