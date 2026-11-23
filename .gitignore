@@ -30,7 +30,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files: nunca versionar secretos (.env, .env.local, .env.*.local…).
+# env files: nunca versionar secretos (.env, .env.local, .env.production, .env.*.local…).
 # Solo la plantilla sin valores reales se versiona.
 .env*
 !.env.example
@@ -41,6 +41,25 @@ yarn-error.log*
 *.pfx
 credentials*.json
 service-account*.json
+*.crt
+*.jks
+id_rsa*
+id_ed25519*
+
+# logs, respaldos y volcados de base de datos (pueden contener datos personales)
+*.log
+logs/
+*.dump
+*.sql.gz
+*.backup
+*.bak
+/backups/
+/dumps/
+
+# bases de datos locales generadas
+*.sqlite
+*.sqlite3
+*.db
 
 # supabase cli (estado local)
 /supabase/.temp/

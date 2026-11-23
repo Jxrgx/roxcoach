@@ -2,9 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { requestOrigin } from "@/lib/http/origin";
+import { publicOrigin } from "@/lib/http/origin";
 import { authErrorMessage } from "@/lib/auth/errors";
-import { isRole, safeNextPath } from "@/lib/permissions";
+import { isRole, isSafeInternalPath, safeNextPath } from "@/lib/permissions";
+import { logError } from "@/lib/log";
 import { hasErrors, validateLogin, validateRegister, type FieldErrors, type LoginInput, type RegisterInput } from "@/lib/validations";
 
 /**
@@ -34,10 +35,6 @@ export async function signIn(input: LoginInput & { next?: string }): Promise<Sig
   redirect(safeNextPath(input.next, role));
 }
 
-function isInternalPath(path: unknown): path is string {
-  return typeof path === "string" && path.startsWith("/") && !path.startsWith("//") && !path.includes("\\");
-}
-
 export type SignUpResult =
   | { ok: false; message?: string; fieldErrors?: FieldErrors<keyof RegisterInput> }
   | { ok: true; status: "check-email"; email: string };
@@ -47,6 +44,14 @@ export async function signUp(input: RegisterInput & { next?: string }): Promise<
   if (hasErrors(fieldErrors)) return { ok: false, fieldErrors };
   if (!isRole(input.role)) return { ok: false, fieldErrors: { role: "Elige si eres coach o atleta." } };
 
+  let origin: string;
+  try {
+    origin = await publicOrigin();
+  } catch (error) {
+    logError("signUp", error);
+    return { ok: false, message: "No pudimos crear tu cuenta en este momento. Inténtalo más tarde." };
+  }
+
   const supabase = await createClient();
   const email = input.email.trim();
   const { data, error } = await supabase.auth.signUp({
@@ -54,7 +59,7 @@ export async function signUp(input: RegisterInput & { next?: string }): Promise<
     password: input.password,
     options: {
       // `next` (p. ej. la invitación) se valida de nuevo en /auth/confirm con safeNextPath.
-      emailRedirectTo: `${await requestOrigin()}/auth/confirm${isInternalPath(input.next) ? `?next=${encodeURIComponent(input.next)}` : ""}`,
+      emailRedirectTo: `${origin}/auth/confirm${isSafeInternalPath(input.next) ? `?next=${encodeURIComponent(input.next)}` : ""}`,
       // El trigger de registro copia el rol a app_metadata y crea el perfil.
       data: { name: input.name.trim(), role: input.role },
     },

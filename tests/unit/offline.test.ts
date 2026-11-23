@@ -141,6 +141,9 @@ describe("reglas del servidor", () => {
     expect(decideSetWrite({ clientOpId: null }, { kind: "correct", opId: null })).toBe("write");
     expect(decideSetWrite({ clientOpId: "y" }, { kind: "correct", opId: "x" })).toBe("conflict-changed");
     expect(decideSetWrite(null, { kind: "correct", opId: "x" })).toBe("conflict-changed");
+    // La misma operación procesada en paralelo por otra petición: duplicado, no conflicto.
+    expect(decideSetWrite({ clientOpId: "op-1" }, { kind: "new" }, "op-1")).toBe("duplicate");
+    expect(decideSetWrite({ clientOpId: "op-1" }, { kind: "correct", opId: "op-0" }, "op-1")).toBe("duplicate");
   });
 
   it("acota la hora del dispositivo: ni antes del inicio ni en el futuro", () => {

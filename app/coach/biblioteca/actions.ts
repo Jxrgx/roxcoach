@@ -6,6 +6,7 @@ import { requireCoach } from "@/lib/auth/session";
 import { createExercise, duplicateSystemExercise, setExerciseArchived, updateExercise, type ExerciseWriteData } from "@/lib/db/exercises";
 import { SUBSTITUTION_ERROR_MESSAGE, type ExerciseCategoryValue, type ExerciseDifficultyValue, type MediaTypeValue } from "@/lib/exercises/rules";
 import { hasErrors, validateExercise, type ActionResult, type ExerciseInput } from "@/lib/validations";
+import { logError } from "@/lib/log";
 
 /**
  * Acciones del coach sobre su biblioteca. Todas verifican la sesión
@@ -44,7 +45,7 @@ export async function createExerciseAction(input: ExerciseInput): Promise<Action
   try {
     result = await createExercise(coach.id, toWriteData(input));
   } catch (error) {
-    console.error("createExerciseAction", error);
+    logError("createExerciseAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   if (!result.ok) {
@@ -63,7 +64,7 @@ export async function updateExerciseAction(id: string, input: ExerciseInput): Pr
   try {
     result = await updateExercise(coach.id, id, toWriteData(input));
   } catch (error) {
-    console.error("updateExerciseAction", error);
+    logError("updateExerciseAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   if (!result.ok) {
@@ -81,7 +82,7 @@ async function changeArchived(id: string, archived: boolean): Promise<ActionResu
     const ok = await setExerciseArchived(coach.id, id, archived);
     if (!ok) return { ok: false, message: "El ejercicio cambió o no es tuyo. Recarga la página." };
   } catch (error) {
-    console.error("changeArchived", error);
+    logError("changeArchived", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   revalidateLibrary(id);
@@ -104,7 +105,7 @@ export async function duplicateExerciseAction(id: string): Promise<ActionResult<
   try {
     result = await duplicateSystemExercise(coach.id, id);
   } catch (error) {
-    console.error("duplicateExerciseAction", error);
+    logError("duplicateExerciseAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   if (!result.ok) return { ok: false, message: "Solo puedes duplicar ejercicios de RoxCoach." };

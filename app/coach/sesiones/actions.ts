@@ -17,6 +17,7 @@ import {
   type ScheduleInput,
   type SessionDetailsInput,
 } from "@/lib/validations";
+import { logError } from "@/lib/log";
 
 /**
  * Acciones del coach sobre sus sesiones programadas. Todas verifican la sesión
@@ -54,7 +55,7 @@ export async function scheduleSessionAction(input: ScheduleInput): Promise<{ ok:
       athleteIds: input.athleteIds,
     });
   } catch (error) {
-    console.error("scheduleSessionAction", error);
+    logError("scheduleSessionAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   if (!result.ok) {
@@ -80,7 +81,7 @@ export async function updateSessionDetailsAction(id: string, input: SessionDetai
     });
     if (!ok) return { ok: false, message: "Solo puedes editar sesiones programadas de tu calendario." };
   } catch (error) {
-    console.error("updateSessionDetailsAction", error);
+    logError("updateSessionDetailsAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   revalidateSchedule(id);
@@ -93,7 +94,7 @@ export async function cancelSessionAction(id: string): Promise<ActionResult<neve
   try {
     if (!(await cancelSession(coach.id, id))) return { ok: false, message: "La sesión ya no está programada." };
   } catch (error) {
-    console.error("cancelSessionAction", error);
+    logError("cancelSessionAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   revalidateSchedule(id);
@@ -109,7 +110,7 @@ export async function addAthletesAction(id: string, athleteIds: string[]): Promi
     const result = await addAthletesToSession(coach.id, id, [...new Set(athleteIds)]);
     if (!result.ok) return { ok: false, message: result.reason === "not-found" ? "La sesión ya no está programada." : ATHLETES_UNAVAILABLE };
   } catch (error) {
-    console.error("addAthletesAction", error);
+    logError("addAthletesAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   revalidateSchedule(id);
@@ -124,7 +125,7 @@ export async function removeAthleteAction(id: string, athleteId: string): Promis
     if (result === "started") return { ok: false, message: "Este atleta ya comenzó la sesión; se conserva para no perder su historial." };
     if (result === "not-found") return { ok: false, message: "El atleta ya no está en esta sesión." };
   } catch (error) {
-    console.error("removeAthleteAction", error);
+    logError("removeAthleteAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   revalidateSchedule(id);
@@ -169,7 +170,7 @@ export async function saveOverridesAction(
     const saved = await saveAssignmentOverrides(coach.id, sessionId, athleteId, validated.rows);
     if (!saved.ok) return { ok: false, message: saved.reason === "not-found" ? "La sesión no existe." : LOCK_MESSAGE[saved.reason] };
   } catch (error) {
-    console.error("saveOverridesAction", error);
+    logError("saveOverridesAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   revalidatePath(`/coach/sesiones/${sessionId}`);

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { requireAthlete } from "@/lib/auth/session";
 import { acceptInvitation } from "@/lib/db/invitations";
 import type { AcceptBlock } from "@/lib/invitations/rules";
+import { logError } from "@/lib/log";
 
 export type AcceptActionResult = { ok: false; reason: AcceptBlock | "invalid" | "error" };
 
@@ -14,7 +15,7 @@ export async function acceptInvitationAction(token: string): Promise<AcceptActio
   try {
     result = await acceptInvitation(token, { id: athlete.id, email: athlete.email });
   } catch (error) {
-    console.error("acceptInvitationAction", error);
+    logError("acceptInvitationAction", error);
     return { ok: false, reason: "error" };
   }
   if (!result.ok) {

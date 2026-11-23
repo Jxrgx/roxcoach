@@ -15,6 +15,7 @@ import {
   type FieldErrors,
   type SessionFeedbackInput,
 } from "@/lib/validations";
+import { logError } from "@/lib/log";
 
 /**
  * Acciones del atleta sobre la ejecución de sus sesiones. Todas verifican la
@@ -43,7 +44,7 @@ export async function startSessionAction(sessionId: string): Promise<Fail> {
   try {
     result = await startExecution(athlete.id, sessionId, todayKey(APP_TIME_ZONE));
   } catch (error) {
-    console.error("startSessionAction", error);
+    logError("startSessionAction", error);
     return { ok: false, message: "No pudimos comenzar la sesión. Revisa tu conexión e inténtalo de nuevo." };
   }
   if (!result.ok) {
@@ -71,7 +72,7 @@ export async function syncExecutionAction(sessionId: string, ops: unknown): Prom
   try {
     results = await processExecutionOps(athlete, sessionId, ops);
   } catch (error) {
-    console.error("syncExecutionAction", error);
+    logError("syncExecutionAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   if (results.some((r) => r.outcome === "applied")) {
@@ -92,7 +93,7 @@ export async function saveFeedbackAction(
   try {
     if (!(await saveFeedback(athlete.id, sessionId, validated.value))) return { ok: false, message: "Primero finaliza la sesión." };
   } catch (error) {
-    console.error("saveFeedbackAction", error);
+    logError("saveFeedbackAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   revalidateExecution(sessionId);
@@ -117,7 +118,7 @@ export async function reportDiscomfortAction(
     });
     if (!saved) return { ok: false, message: "Comienza la sesión para reportar una molestia." };
   } catch (error) {
-    console.error("reportDiscomfortAction", error);
+    logError("reportDiscomfortAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   revalidateExecution(sessionId);

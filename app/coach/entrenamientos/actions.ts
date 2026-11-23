@@ -7,6 +7,7 @@ import { changeTemplateStatus, duplicateTemplate, saveTemplate } from "@/lib/db/
 import { toTemplateWriteData } from "@/lib/workouts/convert";
 import type { TemplateStatusValue } from "@/lib/workouts/rules";
 import { validateTemplate, type TemplateErrors, type TemplateInput } from "@/lib/validations";
+import { logError } from "@/lib/log";
 
 /**
  * Acciones del coach sobre sus plantillas. Todas verifican la sesión
@@ -35,7 +36,7 @@ export async function saveTemplateAction(id: string | null, input: TemplateInput
   try {
     result = await saveTemplate(coach.id, id, toTemplateWriteData(input, coach.weightUnit));
   } catch (error) {
-    console.error("saveTemplateAction", error);
+    logError("saveTemplateAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   if (!result.ok) {
@@ -62,7 +63,7 @@ async function changeStatus(id: string, to: TemplateStatusValue): Promise<Templa
         : { ok: false, message: "La plantilla cambió o no es tuya. Recarga la página." };
     }
   } catch (error) {
-    console.error("changeStatus", error);
+    logError("changeStatus", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   revalidateTemplates(id);
@@ -90,7 +91,7 @@ export async function duplicateTemplateAction(id: string): Promise<TemplateActio
   try {
     result = await duplicateTemplate(coach.id, id);
   } catch (error) {
-    console.error("duplicateTemplateAction", error);
+    logError("duplicateTemplateAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   if (!result.ok) return { ok: false, message: "La plantilla no existe." };

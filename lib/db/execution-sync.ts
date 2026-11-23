@@ -9,6 +9,7 @@ import type { OpResult, WireOp } from "@/lib/offline/queue";
 import { clampClientTime, CONFLICT_MESSAGE, decideSetWrite, invalidOpReason, MAX_BATCH } from "@/lib/offline/server-rules";
 import { validateSetLog } from "@/lib/validations";
 import type { WeightUnit } from "@/lib/workouts/rules";
+import { logError } from "@/lib/log";
 
 /**
  * Procesa la cola de la ejecución de UN atleta (fase 11), en orden. Cada
@@ -62,7 +63,7 @@ export async function processExecutionOps(athlete: { id: string; weightUnit: Wei
       } else if (error instanceof Error && /23514|solo se registran|no existe|omitido/i.test(error.message)) {
         results.push({ opId, outcome: "rejected", message: "El servidor rechazó la serie: no corresponde a tu plan vigente." });
       } else {
-        console.error("processExecutionOps", error);
+        logError("processExecutionOps", error);
         results.push({ opId, outcome: "retry", message: "No se pudo enviar. Se reintentará." });
         stopped = true;
       }
@@ -76,7 +77,9 @@ async function processOne(tx: Tx, op: WireOp, logId: string, plan: EffectivePlan
   if (seen) {
     if (seen.sessionLogId !== logId) throw new Rejected("Operación inválida.");
     const set = op.kind === "logSet" ? await tx.setLog.findUnique({ where: { clientOpId: op.opId } }) : null;
-    return { opId: op.opId, outcome: "duplicate", ...(set ? { set: toSet(set) } : {}) };
+    // Una finalización ya procesada (p. ej. la respuesta se perdió al recargar) sigue
+    // significando "sesión finalizada": el cliente debe ir al resumen.
+    return { opId: op.opId, outcome: "duplicate", ...(set ? { set: toSet(set) } : {}), ...(op.kind === "finish" ? { finished: true } : {}) };
   }
 
   const log = await tx.sessionLog.findUniqueOrThrow({ where: { id: logId }, select: { status: true, startedAt: true, pausedAt: true, pausedSeconds: true } });
@@ -102,8 +105,9 @@ async function processOne(tx: Tx, op: WireOp, logId: string, plan: EffectivePlan
     if (!validated.ok) throw new Rejected(`Datos de la serie inválidos: ${Object.values(validated.errors)[0] ?? "revisa los valores"}`);
 
     const where = { sessionLogId_blockIndex_exerciseIndex_setNumber: { sessionLogId: logId, ...position } };
-    const existing = await tx.setLog.findUnique({ where, select: { clientOpId: true } });
-    const decision = decideSetWrite(existing, op.expect!);
+    const existing = await tx.setLog.findUnique({ where });
+    const decision = decideSetWrite(existing, op.expect!, op.opId);
+    if (decision === "duplicate") return { opId: op.opId, outcome: "duplicate", set: toSet(existing!) };
     if (decision === "conflict-existing") return { opId: op.opId, outcome: "conflict", message: CONFLICT_MESSAGE.existing };
     if (decision === "conflict-changed") return { opId: op.opId, outcome: "conflict", message: CONFLICT_MESSAGE.changed };
 

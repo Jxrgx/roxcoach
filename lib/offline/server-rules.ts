@@ -40,14 +40,17 @@ export function clampClientTime(clientAt: string, bounds: { min: Date; max: Date
   return new Date(Math.min(hi, Math.max(lo, Number.isFinite(t) ? t : hi)));
 }
 
-export type SetWriteDecision = "write" | "conflict-existing" | "conflict-changed";
+export type SetWriteDecision = "write" | "duplicate" | "conflict-existing" | "conflict-changed";
 
 /**
  * ¿Se puede escribir la serie? Nunca se sobrescribe automáticamente un
  * resultado que el atleta no vio: una serie "nueva" exige la posición vacía; una
  * corrección exige que la serie siga siendo la que el atleta corrigió.
+ * Si la serie ya la escribió ESTA misma operación (otra petición la procesó en
+ * paralelo, p. ej. al recargar justo al volver la red), es un duplicado, no un conflicto.
  */
-export function decideSetWrite(existing: { clientOpId: string | null } | null, expect: SetExpectation): SetWriteDecision {
+export function decideSetWrite(existing: { clientOpId: string | null } | null, expect: SetExpectation, opId?: string): SetWriteDecision {
+  if (existing && opId && existing.clientOpId === opId) return "duplicate";
   if (expect.kind === "new") return existing ? "conflict-existing" : "write";
   if (!existing) return "conflict-changed";
   return existing.clientOpId === expect.opId ? "write" : "conflict-changed";

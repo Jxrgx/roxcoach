@@ -58,15 +58,18 @@ export function useExecutionQueue({
     loadedRef.current = onLoaded;
   });
 
+  // Primero se escribe en el dispositivo y DESPUÉS se muestra: "Guardado localmente"
+  // significa que ya está en IndexedDB (una recarga inmediata no lo pierde).
   const commit = useCallback(async (next: QueuedOp[]) => {
     const prev = opsRef.current;
     opsRef.current = next;
-    setOps(next);
     const store = storeRef.current;
-    if (!store) return;
-    const keep = new Set(next.map((o) => o.opId));
-    await store.deleteOps(prev.filter((o) => !keep.has(o.opId)).map((o) => o.opId));
-    await store.putOps(next.filter((o) => prev.find((p) => p.opId === o.opId) !== o));
+    if (store) {
+      const keep = new Set(next.map((o) => o.opId));
+      await store.deleteOps(prev.filter((o) => !keep.has(o.opId)).map((o) => o.opId));
+      await store.putOps(next.filter((o) => prev.find((p) => p.opId === o.opId) !== o));
+    }
+    setOps(next);
   }, []);
 
   const flush = useCallback(async () => {

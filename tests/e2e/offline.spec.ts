@@ -92,7 +92,7 @@ async function start(page: Page, sessionId: string) {
 
 const logger = (page: Page) => page.getByRole("form", { name: /^Registrar serie/ });
 /** Estado de envío de la ejecución (no el aviso general de conexión del shell). */
-const status = (page: Page) => page.getByRole("main").getByRole("status").filter({ hasText: /^(En línea|Sin conexión|Guardado|Sincronizando|Revisa)/ }).first();
+const status = (page: Page) => page.getByRole("main").getByRole("status").filter({ hasText: /^(En línea|Sin conexión|Guardado|Sincroniza|Error)/ }).first();
 
 async function completeSet(page: Page) {
   await logger(page).getByRole("button", { name: /Completar serie|Guardar corrección/ }).click();
@@ -127,7 +127,7 @@ test.describe("ejecución sin conexión", () => {
 
     // Online: la serie llega al servidor con su operación idempotente.
     await completeSet(page);
-    await expect(status(page)).toHaveText("Guardado");
+    await expect(status(page)).toHaveText("Sincronizado");
     await skipRest(page);
     let rows = await setsOf(assignmentId);
     expect(rows).toHaveLength(1);
@@ -148,7 +148,7 @@ test.describe("ejecución sin conexión", () => {
     await page.reload().catch(() => undefined);
     await ctx.setOffline(false);
     await page.goto(`/atleta/sesiones/${sessionId}/ejecutar`, { waitUntil: "networkidle" });
-    await expect(status(page)).toHaveText("Guardado");
+    await expect(status(page)).toHaveText("Sincronizado");
     rows = await setsOf(assignmentId);
     expect(rows.map((r) => r.set_number)).toEqual([1, 2]);
     // Sin duplicados: una operación por serie.
@@ -220,7 +220,7 @@ test.describe("ejecución sin conexión", () => {
     await expect(panel).toBeVisible();
     await expect(panel.getByText(/Serie 1 de Sled Push/)).toBeVisible();
     await expect(panel.getByText(/Conflicto: .*ya había finalizado/)).toBeVisible();
-    await expect(status(page)).toContainText("Revisa los datos sin enviar");
+    await expect(status(page)).toContainText("Error de sincronización");
     expect(await setsOf(assignmentId)).toHaveLength(0); // no se sobrescribió nada
 
     await panel.getByRole("button", { name: /^Descartar/ }).click();
@@ -252,7 +252,7 @@ test.describe("ejecución sin conexión", () => {
     await expect(status(page)).toContainText("2 pendientes");
 
     await ctx.setOffline(false);
-    await expect(status(page)).toHaveText("Guardado");
+    await expect(status(page)).toHaveText("Sincronizado");
     const rows = await setsOf(assignmentId);
     expect(rows.map((r) => [r.exercise_index, r.set_number, r.actual_load_kg])).toEqual([
       [0, 1, 60],

@@ -65,7 +65,12 @@ Después de cada pantalla, revísala en 360, 390, tablet y desktop. Confirma que
 
 ## Base de datos y autenticación
 
-- **Variables:** viven en `.env.local` (plantilla en `.env.example`). Nunca versiones secretos.
+- **Variables:**
+  - Viven en `.env.local` (plantilla en `.env.example`). Nunca versiones secretos.
+  - Si agregas una variable, regístrala en `ENV_VARS` (`lib/config/env-rules.ts`) y en `.env.example`. Una prueba unitaria compara ambos.
+  - Solo las públicas llevan `NEXT_PUBLIC_`. Nunca leas una variable de servidor en un archivo `"use client"`: otra prueba lo detecta.
+- **Enlaces absolutos:** usa `publicOrigin()` (`lib/http/origin.ts`), nunca las cabeceras de la petición.
+- **Errores en el servidor:** usa `logError("contexto", error)` / `logWarn` de `lib/log.ts`, nunca `console.*` directo. No registres argumentos, correos ni contenido del usuario.
 - **Cambio de esquema:**
   1. Edita `prisma/schema.prisma`.
   2. Crea la carpeta de migración y genera su SQL comparando con el esquema del último commit. Este método no necesita base sombra:
@@ -74,6 +79,8 @@ Después de cada pantalla, revísala en 360, 390, tablet y desktop. Confirma que
   3. Agrega el SQL manual que necesites (RLS, triggers).
   4. Aplica con `npm run db:migrate` y regenera el cliente con `npm run db:generate`.
   5. **Nunca edites una migración ya aplicada.** Corrige con una migración nueva (ejemplo: `fix_invitation_accepted_check`).
+  6. Si la migración crea una función, revoca su ejecución en la misma migración: `REVOKE EXECUTE ON FUNCTION public.<nombre>(…) FROM PUBLIC, anon, authenticated;`. Tablas nuevas: activa RLS (`ALTER TABLE … ENABLE ROW LEVEL SECURITY`).
+  7. Ejecuta `npm run db:audit` (solo lectura): debe salir limpio.
 - **No uses `prisma migrate dev`:** las migraciones usan el esquema `auth` de Supabase, que su base sombra no tiene.
 - **Datos en páginas:** se obtienen en el servidor mediante `lib/auth/session.ts` (`requireCoach` / `requireAthlete`) y `lib/db/*`. Nunca importes `lib/db` en componentes cliente, salvo para tipos.
 - **Server Actions:** toda Server Action que escriba datos debe llamar primero a `requireCoach()` o `requireAthlete()` y repetir la validación de `lib/validations`.
@@ -89,7 +96,18 @@ Después de cada pantalla, revísala en 360, 390, tablet y desktop. Confirma que
   - El SMTP integrado de Supabase permite muy pocos correos por hora y solo a miembros de la organización.
   - Supabase rechaza dominios como `example.com` (`email_address_invalid`).
   - El envío real se verifica a mano.
-- **Seguridad** (`security.spec.ts`): redirecciones abiertas en el login, y RLS por la API pública (sin lectura de perfiles ni escalada de rol).
+- **Seguridad** (`security.spec.ts`):
+  - redirecciones abiertas en el login (incluidos `/	/` y `/
+/`);
+  - RLS por la API pública: sin lectura de perfiles ni escalada de rol.
+- **Fase 13** (`security.spec.ts`):
+  - confirmación con `token_hash` + `type=email` y `next` anidado o de otro dominio;
+  - cabeceras de seguridad en páginas, SW, manifest, páginas offline y health check;
+  - ninguna violación de CSP en pantallas clave, con el SW registrado;
+  - ningún secreto en el HTML, los chunks de JS ni el SW. Se compara con los valores de `.env.local` **sin imprimirlos**;
+  - páginas de error sin stack ni SQL;
+  - inyección de cabecera Host: se captura la Server Action de invitación y se repite con `Origin` y `X-Forwarded-Host` falsos, y el enlace sigue saliendo de `APP_URL`. Chromium no permite reescribir `Origin` desde `page.route`, por eso se repite con `page.request`.
+  - `playwright.config.ts` pasa `APP_URL=http://localhost:3100` al servidor, que la exige en producción.
 - **Cerrar sesión:** usa `scope: "local"` para no invalidar las sesiones compartidas por otras pruebas.
 - **Datos de prueba de la fase 3:**
   - El setup vincula al coach y al atleta compartidos (relación activa, idempotente) y guarda sus ids en `tests/e2e/.auth/ids.json`. Así la ruta dinámica `/coach/atletas/[id]` entra en la revisión responsive.
@@ -131,3 +149,9 @@ Después de cada pantalla, revísala en 360, 390, tablet y desktop. Confirma que
   - El estado de envío se localiza dentro de `main` (el shell tiene su propio aviso "Sin conexión") y "Guardado" se compara exacto (también existe "Guardado localmente").
   - El temporizador tras suspender se prueba con `page.clock.install()` + `clock.fastForward()` (pasa el tiempo sin ticks).
   - Para revisar la cola local en una prueba: `indexedDB.open("roxcoach-ejecucion")`, almacén `ops`.
+- **PWA y service worker (fase 12)** (`pwa.spec.ts`):
+  - El SW solo se registra en producción: las e2e ya usan el build de producción (`next start`). `swReady()` espera a que esté activo, controle la página y haya precacheado las páginas offline.
+  - Sin red, una navegación se redirige a `/offline/ejecucion?sesion=` o `/sin-conexion?desde=`. Encadenar muchas navegaciones programáticas entre páginas offline en una sola pestaña de Chromium sin red se aborta de forma intermitente (`ERR_ABORTED`); las pruebas abren cada pantalla en una pestaña nueva del mismo contexto.
+  - Antes de recargar sin red, espera a ver "Guardado localmente" (la operación ya está en IndexedDB).
+  - Cambios en `public/sw.js`, `public/sw-rules.js` o en las páginas offline: sube `SW_VERSION`. Iconos: `node scripts/generate-icons.mjs`.
+  - Al terminar no quedan SW registrados ni servidores: cada prueba usa un contexto nuevo que se cierra, y Playwright detiene el servidor.

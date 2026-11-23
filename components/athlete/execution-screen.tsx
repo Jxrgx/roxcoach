@@ -19,6 +19,7 @@ import {
 import type { EffectiveExercise } from "@/lib/overrides/apply";
 import { activeSeconds, nextPendingIndex, setSlots, slotKey, type LoggedSet, type SetPosition } from "@/lib/execution/progress";
 import { foldPauses, mergeSets, restRemaining, type OpResult, type RestState } from "@/lib/offline/queue";
+import { buildSessionCopy } from "@/lib/offline/restore";
 import type { SessionSnapshotV1 } from "@/lib/scheduling/snapshot";
 import { formatClock } from "@/lib/utils/format";
 import type { WeightUnit } from "@/lib/workouts/rules";
@@ -47,6 +48,8 @@ interface ExecutionScreenProps {
   sets: ServerSet[];
   /** Hora del servidor al renderizar (corrige el desfase del reloj del teléfono). */
   serverNow: number;
+  /** Restaurada desde el dispositivo sin red (shell offline, fase 12). */
+  restored?: boolean;
 }
 
 type Phase = { kind: "set" } | { kind: "rest"; rest: RestState };
@@ -59,7 +62,7 @@ type Phase = { kind: "set" } | { kind: "rest"; rest: RestState };
  * Nivel 2: estado de conexión, bloque, progreso y tiempo activo; pausa y finalizar.
  * Nivel 3 (panel inferior): ver ejercicio, instrucciones del bloque y reportar molestia.
  */
-export function ExecutionScreen({ sessionId, userId, title, snapshot, unit, log, sets, serverNow }: ExecutionScreenProps) {
+export function ExecutionScreen({ sessionId, userId, title, snapshot, unit, log, sets, serverNow, restored = false }: ExecutionScreenProps) {
   const router = useRouter();
   const slots = useMemo(() => setSlots(snapshot), [snapshot]);
   const [serverSets, setServerSets] = useState(() => new Map(sets.map((s) => [slotKey(s), s])));
@@ -97,6 +100,30 @@ export function ExecutionScreen({ sessionId, userId, title, snapshot, unit, log,
     },
   });
   const displayed = useMemo(() => mergeSets([...serverSets.values()], queue.ops), [serverSets, queue.ops]);
+
+  // Copia local para poder recargar sin red (fase 12): se guarda al abrir con red y
+  // se actualiza con cada confirmación del servidor. Ligada a este usuario.
+  useEffect(() => {
+    const store = queue.store.current;
+    if (!queue.loaded || !store) return;
+    void (async () => {
+      if (!restored) await store.setLastUser(userId);
+      await store.putSessionCopy(
+        buildSessionCopy(
+          {
+            userId,
+            sessionId,
+            title,
+            snapshot,
+            unit,
+            log: { startedAt: log.startedAt.toISOString(), pausedAt: serverTimes.pausedAt?.toISOString() ?? null, pausedSeconds: serverTimes.pausedSeconds },
+            sets: [...serverSets.values()],
+          },
+          new Date(),
+        ),
+      );
+    })();
+  }, [queue.loaded, queue.store, restored, userId, sessionId, title, snapshot, unit, log.startedAt, serverTimes, serverSets]);
   const times = foldPauses(serverTimes, queue.ops);
   const finishQueued = queue.ops.some((o) => o.kind === "finish" && (o.status === "pending" || o.status === "sending"));
 
@@ -183,7 +210,15 @@ export function ExecutionScreen({ sessionId, userId, title, snapshot, unit, log,
             <span className={cn("block text-2xl font-bold tabular-nums", paused ? "text-warning" : "text-ink")}>{formatClock(elapsed)}</span>
           </p>
         </div>
-        <SyncStatus state={queue.state} pending={queue.pending} online={queue.online} syncing={queue.syncing} available={queue.available} onRetry={() => void queue.flush()} />
+        <SyncStatus
+          state={queue.state}
+          pending={queue.pending}
+          online={queue.online}
+          syncing={queue.syncing}
+          available={queue.available}
+          restored={restored}
+          onRetry={() => void queue.flush()}
+        />
         <ProgressBar value={done} max={Math.max(1, total)} label="Progreso de la sesión" showLabel valueText={`${done} de ${total} series`} />
         {!finishQueued && (
           <div className="grid grid-cols-[1fr_1fr_auto] gap-2">

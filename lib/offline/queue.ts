@@ -150,8 +150,8 @@ export const SYNC_LABEL: Record<SyncState, string> = {
   offline: "Sin conexión",
   "saved-locally": "Guardado localmente",
   syncing: "Sincronizando",
-  synced: "Guardado",
-  attention: "Revisa los datos sin enviar",
+  synced: "Sincronizado",
+  attention: "Error de sincronización: revisa los datos sin enviar",
 };
 
 /** Estado breve para la pantalla de ejecución. */

@@ -5,9 +5,9 @@ Plataforma web/PWA en español para coaches y atletas de **HYROX**. Reemplaza pi
 - **Panel del coach** (`/coach/*`): pensado para desktop y tablet.
 - **App del atleta** (`/atleta/*`): pensada para mobile y uso con una mano.
 
-> **Estado actual: fase 11.**
-> - **Ya funciona:** autenticación real (Supabase), roles coach/atleta, rutas protegidas, perfiles en PostgreSQL (Prisma), **gestión de atletas con invitaciones** (relación coach–atleta), **biblioteca de ejercicios**, **constructor de plantillas**, **programación y asignación de sesiones**, **ejecución del entrenamiento**, **progreso con datos reales**, **avisos operativos para el coach**, **personalización de sesiones por atleta** y **ejecución resistente a cortes de conexión**.
-> - **Datos reales:** Ejecución sin conexión (cada serie, pausa, reanudación y finalización se guarda primero en el dispositivo y se envía en orden e idempotente al volver la red; estado de conexión visible, reintento manual, conflictos explicados y sin duplicados), Personalización por atleta (ajustar carga, series, objetivo, descanso y nota, sustituir u omitir ejercicios antes de que el atleta comience, con vista previa y restauración; el atleta ve y ejecuta su versión y el coach compara original, ajuste y realizado), Avisos del coach (molestias, sesiones incompletas, RPE alto, sesiones en curso demasiado tiempo, no iniciadas y nuevos atletas; bandeja con filtros, marcar leído, historial, resumen en Inicio y contador en la navegación), Progreso del atleta y del coach (adherencia, completadas en 7/30/90 días, tiempo entrenado, RPE promedio, marcas personales, evolución por ejercicio y molestias; filtros por periodo, atleta y estado; detalle por atleta), Ejecución (comenzar, serie activa con lo planeado separado de lo realizado, descanso, pausa y reanudación guardadas en el servidor, corregir series, finalizar con confirmación, resumen con RPE general, comentario y molestias; el coach ve estado y resultados por atleta), Programación (programar una plantilla publicada para varios atletas activos con snapshot congelado; editar detalles, cancelar, agregar y quitar atletas), Calendario semanal del coach, sesiones de hoy en Inicio, Agenda, Inicio, Entrenamiento y detalle de sesión del atleta, Entrenamientos (plantillas por bloques con ejercicios de la biblioteca: crear, editar, reordenar, vista previa, borrador/publicar, duplicar, archivar y restaurar), Biblioteca (ejercicios de RoxCoach y personalizados: buscar, filtrar, crear, editar, duplicar, archivar y restaurar, con medios por URL y sustituciones), detalle de ejercicio para el atleta, Atletas (lista, detalle, invitaciones, pausar y reactivar), invitación pública `/invitacion/[token]`, Configuración del coach, Perfil del atleta (con su coach) y los saludos.
+> **Estado actual: fase 12.**
+> - **Ya funciona:** autenticación real (Supabase), roles coach/atleta, rutas protegidas, perfiles en PostgreSQL (Prisma), **gestión de atletas con invitaciones** (relación coach–atleta), **biblioteca de ejercicios**, **constructor de plantillas**, **programación y asignación de sesiones**, **ejecución del entrenamiento**, **progreso con datos reales**, **avisos operativos para el coach**, **personalización de sesiones por atleta**, **ejecución resistente a cortes de conexión** y **PWA instalable con recarga offline de la ejecución**.
+> - **Datos reales:** PWA instalable (manifest e iconos) y recarga sin red de la ejecución abierta (service worker mínimo + copia local en IndexedDB; página offline; limpieza de datos privados al cerrar sesión), Ejecución sin conexión (cada serie, pausa, reanudación y finalización se guarda primero en el dispositivo y se envía en orden e idempotente al volver la red; estado de conexión visible, reintento manual, conflictos explicados y sin duplicados), Personalización por atleta (ajustar carga, series, objetivo, descanso y nota, sustituir u omitir ejercicios antes de que el atleta comience, con vista previa y restauración; el atleta ve y ejecuta su versión y el coach compara original, ajuste y realizado), Avisos del coach (molestias, sesiones incompletas, RPE alto, sesiones en curso demasiado tiempo, no iniciadas y nuevos atletas; bandeja con filtros, marcar leído, historial, resumen en Inicio y contador en la navegación), Progreso del atleta y del coach (adherencia, completadas en 7/30/90 días, tiempo entrenado, RPE promedio, marcas personales, evolución por ejercicio y molestias; filtros por periodo, atleta y estado; detalle por atleta), Ejecución (comenzar, serie activa con lo planeado separado de lo realizado, descanso, pausa y reanudación guardadas en el servidor, corregir series, finalizar con confirmación, resumen con RPE general, comentario y molestias; el coach ve estado y resultados por atleta), Programación (programar una plantilla publicada para varios atletas activos con snapshot congelado; editar detalles, cancelar, agregar y quitar atletas), Calendario semanal del coach, sesiones de hoy en Inicio, Agenda, Inicio, Entrenamiento y detalle de sesión del atleta, Entrenamientos (plantillas por bloques con ejercicios de la biblioteca: crear, editar, reordenar, vista previa, borrador/publicar, duplicar, archivar y restaurar), Biblioteca (ejercicios de RoxCoach y personalizados: buscar, filtrar, crear, editar, duplicar, archivar y restaurar, con medios por URL y sustituciones), detalle de ejercicio para el atleta, Atletas (lista, detalle, invitaciones, pausar y reactivar), invitación pública `/invitacion/[token]`, Configuración del coach, Perfil del atleta (con su coach) y los saludos.
 > - **Todavía con datos ficticios:** mensajes.
 
 Las reglas permanentes de desarrollo, diseño y UX están en [CLAUDE.md](CLAUDE.md).
@@ -26,7 +26,7 @@ Las reglas permanentes de desarrollo, diseño y UX están en [CLAUDE.md](CLAUDE.
 
 ## Configuración (primera vez)
 
-Requisitos: Node.js 20.9 o superior (probado con Node 24) y un proyecto de Supabase **de desarrollo**.
+Requisitos: Node.js 20.9 o superior (22 LTS recomendado para producción; probado con Node 24) y un proyecto de Supabase **de desarrollo**.
 
 1. **Instala dependencias.** Al terminar, genera el cliente de Prisma automáticamente.
    ```bash
@@ -41,12 +41,20 @@ Requisitos: Node.js 20.9 o superior (probado con Node 24) y un proyecto de Supab
    - Site URL: `http://localhost:3000`
    - Redirect URLs: `http://localhost:3000/auth/confirm**`. El comodín permite el parámetro `?next=`, con el que el registro desde una invitación regresa a ella.
    - "Confirm email" activado (Authentication → Providers → Email).
+   - Recomendado: plantilla "Confirm signup" con `token_hash` (funciona aunque el enlace se abra en otro dispositivo). Ver [docs/deployment.md §4.3](docs/deployment.md#43-plantilla-confirm-signup-authentication--emails--templates).
 5. **Arranca la app.**
    ```bash
    npm run dev          # http://localhost:3000
    ```
 
 Sin `.env.local`, el servidor responde con un error que indica qué variable falta.
+
+Para probar el build de producción en local (`npm run build && npm start`) agrega `APP_URL=http://localhost:3000` a `.env.local`: en producción es obligatoria y el servidor no arranca sin ella.
+
+## Producción
+
+- [docs/deployment.md](docs/deployment.md): ambientes, variables, Supabase (URLs y plantilla de confirmación), SMTP y DNS, migraciones, respaldo y restauración, health check y orden seguro de despliegue.
+- [docs/security.md](docs/security.md): controles de seguridad, cabeceras, registro seguro y pendientes.
 
 ## Scripts
 
@@ -62,6 +70,7 @@ Sin `.env.local`, el servidor responde con un error que indica qué variable fal
 | `npm run db:generate` | Regenera el cliente de Prisma |
 | `npm run db:migrate` | Aplica migraciones pendientes (`prisma migrate deploy`) |
 | `npm run db:status` | Estado de las migraciones |
+| `npm run db:audit` | Auditoría de solo lectura: RLS, privilegios, funciones y migraciones |
 | `npm run db:studio` | Explorador de datos de Prisma |
 
 Las e2e requieren `.env.local` completo, incluidos `SUPABASE_SECRET_KEY` y `E2E_*`, y `npx playwright install chromium` la primera vez.
@@ -74,7 +83,8 @@ app/
   coach/…            Panel del coach (8 secciones)
   atleta/…           App del atleta (5 secciones)
   login/ registro/   Acceso (Supabase Auth)
-  auth/confirm       Confirmación de correo
+  auth/confirm       Confirmación de correo (token_hash o code)
+  api/health         Health check para el despliegue
   auth/salir         Cierre de sesión cuando la sesión es inválida
   invitacion/[token] Invitación pública para unirse al equipo de un coach
   componentes/       Catálogo del sistema visual (desarrollo)
@@ -95,15 +105,22 @@ lib/
   progress/          Progreso: estados, adherencia, periodos, tiempo, RPE, marcas y evolución (puras)
   alerts/            Avisos: tipos, prioridades, generación de candidatos, deduplicación y orden (puras)
   overrides/         Personalización por atleta: plan efectivo, cambios, validación y bloqueos (puras)
-  offline/           Cola local de la ejecución: operaciones, sincronización, reglas del servidor (puras) e IndexedDB
+  offline/           Cola local de la ejecución, copia local para restaurar sin red, reglas del servidor (puras) e IndexedDB
+public/sw.js         Service worker mínimo (fase 12); reglas puras en public/sw-rules.js
   athletes/          Filtros puros de la lista de atletas
   permissions/       Roles, acceso por ruta y destinos seguros
   validations/       Validaciones puras (cliente y servidor)
   env.ts             Variables de entorno con errores claros
+  config/            Catálogo y validación de variables por ambiente, origen público (puras)
+  security/          Cabeceras de seguridad HTTP y CSP (puras)
+  http/              Origen público para enlaces absolutos (APP_URL)
+  log.ts             Registro seguro (error/warn/info, sin datos sensibles)
   mock/              Datos ficticios de los módulos aún no implementados
 prisma/              Esquema activo, migraciones y seed
+instrumentation.ts   Valida la configuración al arrancar en producción
+scripts/db-audit.mjs Auditoría de la base de datos (solo lectura)
 tests/unit, tests/e2e
-docs/                Arquitectura, flujo de trabajo, módulos y modelo futuro
+docs/                Arquitectura, flujo de trabajo, módulos, despliegue, seguridad y modelo futuro
 ```
 
 Más detalle en [docs/architecture.md](docs/architecture.md), [docs/development-workflow.md](docs/development-workflow.md) y [docs/modules.md](docs/modules.md).

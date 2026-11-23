@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Select, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
+import { useOnline } from "@/lib/utils/use-online";
 
 const EMPTY: DiscomfortInput = { zone: "", intensity: "", note: "" };
 
@@ -33,9 +34,12 @@ export function DiscomfortDialog({
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
   const toast = useToast();
+  // Las molestias requieren conexión (no van en la cola offline): se indica y se conserva lo escrito.
+  const online = useOnline();
 
   function submit(e: FormEvent) {
     e.preventDefault();
+    if (!online) return;
     const local = validateDiscomfort(values);
     if (!local.ok) {
       setErrors(local.errors);
@@ -67,7 +71,7 @@ export function DiscomfortDialog({
           <Button variant="ghost" onClick={onClose} disabled={pending} fullWidth className="sm:w-auto">
             Cancelar
           </Button>
-          <Button type="submit" form="discomfort-form" loading={pending} loadingLabel="Enviando…" fullWidth className="sm:w-auto">
+          <Button type="submit" form="discomfort-form" loading={pending} loadingLabel="Enviando…" disabled={!online} fullWidth className="sm:w-auto">
             Enviar reporte
           </Button>
         </>
@@ -120,6 +124,11 @@ export function DiscomfortDialog({
         {message && (
           <p role="alert" className="text-sm text-danger">
             {message}
+          </p>
+        )}
+        {!online && (
+          <p role="status" className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-ink">
+            Requiere conexión: reportar una molestia no se guarda sin red. Lo que escribiste se conserva aquí; envíalo cuando vuelva la conexión.
           </p>
         )}
       </form>

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireCoach } from "@/lib/auth/session";
-import { requestOrigin } from "@/lib/http/origin";
+import { publicOrigin } from "@/lib/http/origin";
 import { cancelInvitation, createInvitation, regenerateInvitation } from "@/lib/db/invitations";
 import { setRelationStatus, updateSportsInfoAsCoach } from "@/lib/db/athletes";
 import {
@@ -13,6 +13,7 @@ import {
   type InvitationInput,
   type SportsInfoInput,
 } from "@/lib/validations";
+import { logError } from "@/lib/log";
 
 /**
  * Acciones del coach sobre sus atletas e invitaciones.
@@ -36,7 +37,7 @@ const CREATE_ERRORS = {
 } as const;
 
 async function invitationLink(token: string) {
-  return `${await requestOrigin()}/invitacion/${token}`;
+  return `${await publicOrigin()}/invitacion/${token}`;
 }
 
 export async function inviteAthlete(input: InvitationInput): Promise<InvitationLinkResult> {
@@ -49,7 +50,7 @@ export async function inviteAthlete(input: InvitationInput): Promise<InvitationL
     revalidatePath("/coach/atletas");
     return { ok: true, link: await invitationLink(result.token), email: result.invitation.email, expiresAt: result.invitation.expiresAt };
   } catch (error) {
-    console.error("inviteAthlete", error);
+    logError("inviteAthlete", error);
     return { ok: false, message: GENERIC_ERROR };
   }
 }
@@ -63,7 +64,7 @@ export async function regenerateInvitationLink(invitationId: string): Promise<In
     revalidatePath("/coach/atletas");
     return { ok: true, link: await invitationLink(result.token), email: result.invitation.email, expiresAt: result.invitation.expiresAt };
   } catch (error) {
-    console.error("regenerateInvitationLink", error);
+    logError("regenerateInvitationLink", error);
     return { ok: false, message: GENERIC_ERROR };
   }
 }
@@ -77,7 +78,7 @@ export async function cancelInvitationAction(invitationId: string): Promise<Acti
     revalidatePath("/coach/atletas");
     return { ok: true };
   } catch (error) {
-    console.error("cancelInvitationAction", error);
+    logError("cancelInvitationAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
 }
@@ -91,7 +92,7 @@ async function changeRelation(athleteId: string, from: "active" | "paused", to: 
     revalidatePath("/coach/atletas", "layout");
     return { ok: true };
   } catch (error) {
-    console.error("changeRelation", error);
+    logError("changeRelation", error);
     return { ok: false, message: GENERIC_ERROR };
   }
 }
@@ -120,7 +121,7 @@ export async function saveAthleteSportsInfo(athleteId: string, input: SportsInfo
     revalidatePath(`/coach/atletas/${athleteId}`);
     return { ok: true };
   } catch (error) {
-    console.error("saveAthleteSportsInfo", error);
+    logError("saveAthleteSportsInfo", error);
     return { ok: false, message: GENERIC_ERROR };
   }
 }

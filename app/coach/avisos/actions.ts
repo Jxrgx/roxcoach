@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireCoach } from "@/lib/auth/session";
 import { markAlertRead, markAllAlertsRead } from "@/lib/db/alerts";
 import type { ActionResult } from "@/lib/validations";
+import { logError } from "@/lib/log";
 
 /**
  * Acciones sobre los avisos del coach. El coach sale de su sesión
@@ -25,7 +26,7 @@ export async function markAlertReadAction(id: string): Promise<ActionResult<neve
   try {
     if ((await markAlertRead(coach.id, id)) === "not-found") return { ok: false, message: "El aviso no existe." };
   } catch (error) {
-    console.error("markAlertReadAction", error);
+    logError("markAlertReadAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   revalidateAlerts();
@@ -37,7 +38,7 @@ export async function markAllAlertsReadAction(): Promise<ActionResult<never>> {
   try {
     await markAllAlertsRead(coach.id);
   } catch (error) {
-    console.error("markAllAlertsReadAction", error);
+    logError("markAllAlertsReadAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
   revalidateAlerts();

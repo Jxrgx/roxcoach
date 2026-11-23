@@ -3,12 +3,13 @@
 import { useEffect } from "react";
 import { ErrorState } from "@/components/ui/error-state";
 import { ButtonLink } from "@/components/ui/button";
+import { logError } from "@/lib/log";
 
 /** Contenido compartido por los archivos `error.tsx` de cada área. */
 export function RouteError({ error, retry, homeHref }: { error: unknown; retry: () => void; homeHref: string }) {
   useEffect(() => {
     // Punto único para enviar errores a un servicio de monitoreo en el futuro.
-    console.error(error);
+    logError("routeError", error);
   }, [error]);
 
   return (

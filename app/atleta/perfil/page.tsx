@@ -49,7 +49,7 @@ export default async function AthleteProfilePage({ searchParams }: PageProps<"/a
         <AthleteProfileForm profile={athlete} />
       </ScreenStates>
       <div className="mt-8 flex justify-center">
-        <SignOutButton variant="ghost" />
+        <SignOutButton variant="ghost" userId={athlete.id} />
       </div>
     </>
   );

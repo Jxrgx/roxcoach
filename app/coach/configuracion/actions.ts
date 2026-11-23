@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireCoach } from "@/lib/auth/session";
 import { updateCoachProfile } from "@/lib/db/profiles";
 import { hasErrors, validateCoachSettings, type ActionResult, type CoachSettingsInput } from "@/lib/validations";
+import { logError } from "@/lib/log";
 
 /** Guarda la configuración del coach autenticado (validación repetida en servidor). */
 export async function saveCoachSettings(input: CoachSettingsInput): Promise<ActionResult<keyof CoachSettingsInput>> {
@@ -19,7 +20,7 @@ export async function saveCoachSettings(input: CoachSettingsInput): Promise<Acti
       distanceUnit: input.distanceUnit === "mi" ? "mi" : "km",
     });
   } catch (error) {
-    console.error("saveCoachSettings", error);
+    logError("saveCoachSettings", error);
     return { ok: false, message: "No pudimos guardar los cambios. Revisa tu conexión e inténtalo de nuevo." };
   }
 

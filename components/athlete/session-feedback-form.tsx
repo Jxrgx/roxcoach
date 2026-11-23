@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { RpePicker } from "@/components/athlete/rpe-picker";
+import { useOnline } from "@/lib/utils/use-online";
 
 /** RPE general y comentario: lo único editable después de finalizar. */
 export function SessionFeedbackForm({ sessionId, initial }: { sessionId: string; initial: SessionFeedbackInput }) {
@@ -16,9 +17,12 @@ export function SessionFeedbackForm({ sessionId, initial }: { sessionId: string;
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
   const toast = useToast();
+  // RPE general y comentario requieren conexión (no van en la cola offline).
+  const online = useOnline();
 
   function submit(e: FormEvent) {
     e.preventDefault();
+    if (!online) return;
     const local = validateSessionFeedback(values);
     if (!local.ok) {
       setErrors(local.errors);
@@ -58,7 +62,12 @@ export function SessionFeedbackForm({ sessionId, initial }: { sessionId: string;
           {message}
         </p>
       )}
-      <Button type="submit" size="lg" fullWidth className="sm:w-auto sm:self-end" loading={pending} loadingLabel="Enviando…">
+      {!online && (
+        <p role="status" className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-ink">
+          Requiere conexión: podrás enviar tu RPE y tu comentario cuando vuelva la red. Lo escrito se conserva aquí.
+        </p>
+      )}
+      <Button type="submit" size="lg" fullWidth className="sm:w-auto sm:self-end" loading={pending} loadingLabel="Enviando…" disabled={!online}>
         {saved ? "Actualizar" : "Enviar a mi coach"}
       </Button>
     </form>

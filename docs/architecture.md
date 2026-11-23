@@ -344,6 +344,57 @@ Salvo molestias, se excluyen sesiones canceladas y asignaciones retiradas.
 
 **Interfaz:** estado breve siempre visible (`SyncStatus`, `role="status"` con `aria-live`, icono + texto): En línea · Sin conexión · Guardado localmente (N pendientes) · Sincronizando · Guardado · Revisa los datos sin enviar. Panel de datos sin enviar (`SyncPanel`) debajo de la acción principal: qué quedó, qué pasó y "Descartar". Finalizar sin red queda en cola ("Entrenamiento finalizado en este dispositivo" + "Reintentar envío"); la confirmación avisa cuántos registros siguen sin enviar.
 
+## PWA y recarga offline de la ejecución (fase 12)
+
+**Decisión:** service worker propio y mínimo (`public/sw.js`), sin dependencias. Las librerías (Serwist, next-pwa) precachean todo el build y encajan mal con Turbopack y Cache Components; aquí el alcance debe ser estrecho y auditable. Las reglas son funciones puras en `public/sw-rules.js` (el SW las carga con `importScripts` y Vitest las ejecuta en un sandbox). Se registra solo en producción (`components/shared/pwa-register.tsx`).
+
+**Qué se cachea:**
+- `/offline/ejecucion` y `/sin-conexion`: páginas **estáticas y sin datos** (prerenderizadas, fuera del proxy para que nunca lleven cookies). Se precachean al instalar con `credentials: "omit"` junto con el JS/CSS que su HTML referencia.
+- `/_next/static/*` (archivos con hash, inmutables), `/icons/*`, el manifest, `/icon.svg` y `/apple-icon.png`: primero caché.
+
+**Qué NUNCA se cachea:** HTML de `/atleta`, `/coach`, login o registro; respuestas con `Set-Cookie` o `Cache-Control: private`/`no-store` (`isCacheableResponse`); peticiones que no son GET; Server Actions (`Next-Action`); RSC (`RSC`, `?_rsc`); Supabase y otros orígenes; tokens, cookies o secretos.
+
+**Navegaciones:** siempre a la red. Solo si falla, el SW **redirige** (no sirve el contenido con otra URL) a `/offline/ejecucion?sesion=<id>` si era una ejecución, o a `/sin-conexion?desde=<ruta>` en otro caso; así la dirección coincide con la página y el router de Next no se desfasa.
+
+**Restauración** (`lib/offline/restore.ts`, `components/athlete/offline-execution.tsx`): al abrir la ejecución con red se guarda en IndexedDB una copia local (título, plan efectivo, unidad, tiempos y series confirmadas; se actualiza con cada confirmación) y el último usuario del dispositivo. El shell restaura solo si la copia es del **último usuario** y de **esa sesión** (`decideRestore`): sin copia muestra un aviso honesto; con la finalización en cola, el resumen local con "Reintentar envío"; los conflictos siguen en su panel. Al volver la red carga la ruta real, cuya cola envía lo pendiente (misma idempotencia y orden). `/sin-conexion` ofrece abrir el entrenamiento guardado.
+
+**IndexedDB v2** (`lib/offline/idb.ts`): `DB_VERSION` = 2 añade `sessions` (copias) y `meta` (último usuario) a `ops` y `state`, migrando sin perder la cola. Cambiar de usuario borra las copias del anterior; **cerrar sesión** con el botón borra todo lo privado de ese atleta (`clearUser`) y avisa antes si hay registros sin enviar. Si la sesión caduca sin cerrarla, los datos se conservan para no perder registros.
+
+**Robustez de la sincronización** (descubierto en esta fase): una operación duplicada de "finalizar" sigue indicando `finished` (el cliente va al resumen aunque la respuesta original se perdiera al recargar), y si una serie ya la escribió esa misma operación en una petición paralela se responde `duplicate`, no conflicto. "Guardado localmente" se muestra solo después de escribir en IndexedDB.
+
+**Actualización y versionado:** `SW_VERSION` en `sw-rules.js` nombra las cachés (`roxcoach-static-<v>`, `roxcoach-pages-<v>`). `install` precachea y llama `skipWaiting()`; `activate` borra las cachés de RoxCoach de otras versiones (no toca cachés ajenas) y llama `clients.claim()`. Sin recargas forzadas: nunca interrumpe un entrenamiento. Para publicar cambios del SW o de las páginas offline, sube `SW_VERSION`.
+
+**Instalación:** `app/manifest.ts` (`id`, `scope` y `start_url` "/", `standalone`, `portrait`, colores) e iconos PNG generados sin dependencias con `node scripts/generate-icons.mjs` (192, 512, maskable 512 y `app/apple-icon.png` 180).
+
+**Siguen requiriendo conexión:** RPE general, comentario y reportar molestias (no van en la cola). Sin red, el envío se deshabilita con "Requiere conexión" y lo escrito se conserva en pantalla.
+
+## Producción y endurecimiento (fase 13)
+
+Detalle operativo en [deployment.md](deployment.md) y controles en [security.md](security.md).
+
+- **Configuración por ambiente** (`lib/config/env-rules.ts`, puro):
+  - `ENV_VARS` cataloga cada variable: alcance (pública, servidor, migraciones o pruebas), si es secreta y si es obligatoria en producción.
+  - `validateEnv` devuelve problemas por **nombre**, nunca por valor.
+  - `instrumentation.ts` la ejecuta al arrancar en producción. Si falta algo, el servidor responde 500 (también `/api/health`) y el log nombra la variable.
+- **Origen público:**
+  - `APP_URL` es la única fuente de los enlaces absolutos (confirmación e invitaciones), a través de `publicOrigin()` en `lib/http/origin.ts`. Las cabeceras `Host`/`Origin` ya no deciden el dominio de un enlace.
+  - En desarrollo, sin `APP_URL`, solo se aceptan orígenes locales o los de `ALLOWED_ORIGINS`.
+- **Confirmación de correo** (`app/auth/confirm/route.ts`):
+  - acepta `token_hash` + `type` (`email`/`signup`) y `code` (PKCE);
+  - `confirmNextPath` reduce el `next` (ruta o URL de un origen permitido, con `/auth/confirm?next=` anidado) a una ruta interna;
+  - después `safeNextPath` lo valida por rol.
+- **Redirecciones:** `isSafeInternalPath` rechaza caracteres de control y espacios (`/	/evil` → `//evil` tras el parser de URL) y `safeNextPath` normaliza `..`.
+- **Cabeceras de seguridad:**
+  - `lib/security/headers.ts` (puro), aplicado en `next.config.ts` a todas las rutas. La CSP se aplica **sin nonce** para conservar las páginas estáticas, el shell offline y Cache Components. HSTS solo con `APP_URL` https.
+  - `next.config.ts` se evalúa al compilar, así que `NEXT_PUBLIC_SUPABASE_URL` y `APP_URL` deben existir también en el build.
+- **Registro seguro:** `lib/log.ts` (`logError`, `logWarn`, `logInfo`) reemplaza los `console.error` de Server Actions, DAL y `RouteError`. En producción escribe JSON saneado: de Prisma solo nombre y código.
+- **Health check:** `app/api/health/route.ts` responde `{status:"ok"}` sin caché. Está fuera del proxy, así que no depende de Supabase ni de la base de datos.
+- **Base de datos:**
+  - la migración `20261129100000_harden_privileges` revoca a `anon`/`authenticated` `TRUNCATE`, `REFERENCES`, `TRIGGER` y `MAINTAIN`, más sus privilegios por defecto;
+  - también revoca `EXECUTE` de las funciones de `public` a `PUBLIC`/`anon`/`authenticated`;
+  - `scripts/db-audit.mjs` (`npm run db:audit`) lo verifica sin escribir.
+- **PWA:** sin cambios en el service worker (`SW_VERSION` se mantiene). `/sw.js` y `/sw-rules.js` se sirven con `Cache-Control: no-cache`, y la CSP permite `worker-src`/`manifest-src 'self'`.
+
 ## Estados de pantalla
 
 Toda pantalla con datos envuelve su contenido en `ScreenStates` (`components/shared/screen-states.tsx`):

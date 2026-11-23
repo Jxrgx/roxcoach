@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, CloudUpload, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CloudUpload, HardDrive, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { SYNC_LABEL, type QueuedOp, type SyncState } from "@/lib/offline/queue";
 import { formatActualSet } from "@/lib/execution/format";
 import type { SessionSnapshotV1 } from "@/lib/scheduling/snapshot";
@@ -36,6 +36,7 @@ export function SyncStatus({
   online,
   syncing,
   available,
+  restored = false,
   onRetry,
 }: {
   state: SyncState;
@@ -43,6 +44,8 @@ export function SyncStatus({
   online: boolean;
   syncing: boolean;
   available: boolean;
+  /** Ejecución restaurada desde el dispositivo (recarga sin red). */
+  restored?: boolean;
   onRetry: () => void;
 }) {
   const Icon = ICON[state];
@@ -60,6 +63,12 @@ export function SyncStatus({
         <Button variant="ghost" icon={<RefreshCw aria-hidden className="size-4" />} onClick={onRetry}>
           Reintentar
         </Button>
+      )}
+      {restored && (
+        <p className="flex w-full items-center gap-2 text-sm text-electric">
+          <HardDrive aria-hidden className="size-4 shrink-0" />
+          Restaurado desde el dispositivo
+        </p>
       )}
       {!available && <p className="w-full text-sm text-warning">Este navegador no permite guardar sin conexión: mantén la conexión para no perder datos.</p>}
     </div>

@@ -3,6 +3,7 @@ import { Bell } from "lucide-react";
 import { requireCoach } from "@/lib/auth/session";
 import { countUnreadAlerts, syncCoachAlerts } from "@/lib/db/alerts";
 import { cn } from "@/lib/utils/cn";
+import { logWarn } from "@/lib/log";
 
 /** Texto accesible del indicador. */
 const labelFor = (n: number) => (n === 0 ? "Avisos, sin avisos pendientes" : `Avisos, ${n} sin leer`);
@@ -15,7 +16,7 @@ async function unreadCount(): Promise<number | null> {
     await syncCoachAlerts(coach.id);
     return await countUnreadAlerts(coach.id);
   } catch (error) {
-    console.error("alertsIndicator", error);
+    logWarn("alertsIndicator", error);
     return null;
   }
 }

@@ -77,15 +77,58 @@ export function resolveRouteAccess({
   return { type: "allow" };
 }
 
+const PARSE_BASE = "http://roxcoach.invalid";
+
+/**
+ * ¿Es una ruta interna segura? Rechaza `//host`, `\`, URLs absolutas y
+ * caracteres de control o espacios: el parser de URL los elimina, y entonces
+ * `/<tab>/evil.example` se convertiría en `//evil.example` (redirección abierta).
+ */
+export function isSafeInternalPath(next: unknown): next is string {
+  if (typeof next !== "string" || next.length === 0 || next.length > 2048) return false;
+  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return false;
+  if (/[\u0000- \u007f]/.test(next)) return false;
+  try {
+    return new URL(next, PARSE_BASE).origin === PARSE_BASE;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Destino seguro tras iniciar sesión: solo rutas internas que el rol puede ver.
  * Evita redirecciones abiertas (`//evil.com`, `https://…`).
  */
 export function safeNextPath(next: unknown, role: Role): string {
-  if (typeof next !== "string" || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) {
-    return ROLE_HOME[role];
+  if (!isSafeInternalPath(next)) return ROLE_HOME[role];
+  // Ruta normalizada (resuelve `..`), la misma que verá el navegador.
+  const url = new URL(next, PARSE_BASE);
+  if (GUEST_ONLY.some((p) => inPath(url.pathname, p))) return ROLE_HOME[role];
+  return canAccessPath(role, url.pathname) ? url.pathname + url.search + url.hash : ROLE_HOME[role];
+}
+
+/**
+ * Destino que llega en el `next` del enlace de confirmación de correo.
+ * Acepta una ruta interna o una URL absoluta de un origen permitido (la
+ * plantilla de Supabase pasa `{{ .RedirectTo }}`, que es una URL completa) y
+ * desenvuelve un `/auth/confirm?next=…` anidado. Solo devuelve la RUTA: nunca
+ * se redirige a otro origen. null = usar el inicio del rol.
+ * El resultado debe pasar después por `safeNextPath`.
+ */
+export function confirmNextPath(raw: string | null | undefined, origins: readonly string[], depth = 0): string | null {
+  if (!raw || depth > 2) return null;
+  let url: URL;
+  if (isSafeInternalPath(raw)) url = new URL(raw, PARSE_BASE);
+  else {
+    try {
+      url = new URL(raw);
+    } catch {
+      return null;
+    }
+    if (!origins.includes(url.origin)) return null;
   }
-  const pathname = next.split(/[?#]/)[0] ?? "";
-  if (GUEST_ONLY.some((p) => inPath(pathname, p))) return ROLE_HOME[role];
-  return canAccessPath(role, pathname) ? next : ROLE_HOME[role];
+  if (url.pathname === "/auth/confirm") return confirmNextPath(url.searchParams.get("next"), origins, depth + 1);
+  if (url.pathname === "/" && !url.search) return null;
+  const path = url.pathname + url.search + url.hash;
+  return isSafeInternalPath(path) ? path : null;
 }

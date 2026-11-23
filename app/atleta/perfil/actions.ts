@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAthlete } from "@/lib/auth/session";
 import { updateAthleteProfile } from "@/lib/db/profiles";
 import { hasErrors, validateAthleteProfile, type ActionResult, type AthleteProfileInput } from "@/lib/validations";
+import { logError } from "@/lib/log";
 
 /** Guarda el perfil del atleta autenticado (validación repetida en servidor). */
 export async function saveAthleteProfile(input: AthleteProfileInput): Promise<ActionResult<keyof AthleteProfileInput>> {
@@ -21,7 +22,7 @@ export async function saveAthleteProfile(input: AthleteProfileInput): Promise<Ac
       weightUnit: input.weightUnit === "lb" ? "lb" : "kg",
     });
   } catch (error) {
-    console.error("saveAthleteProfile", error);
+    logError("saveAthleteProfile", error);
     return { ok: false, message: "No pudimos guardar tu perfil. Revisa tu conexión e inténtalo de nuevo." };
   }
 

@@ -33,6 +33,7 @@ export default defineConfig({
     url: `http://localhost:${PORT}`,
     timeout: 240_000,
     reuseExistingServer: !process.env.CI,
-    env: { ROXCOACH_CATALOG: "1" },
+    // APP_URL local: el build de producción la exige al arrancar (instrumentation.ts).
+    env: { ROXCOACH_CATALOG: "1", APP_URL: `http://localhost:${PORT}` },
   },
 });

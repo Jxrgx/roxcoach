@@ -38,6 +38,9 @@
 //                   operaciones ya procesadas (idempotencia), y set_logs con
 //                   client_op_id (único) y recorded_at (hora local) — ver
 //                   prisma/schema.prisma.
+//   [FASE 12]       PWA y recarga offline: sin cambios en la base de datos. La
+//                   copia local de la ejecución vive solo en IndexedDB del
+//                   dispositivo (ver docs/architecture.md).
 //   [FUTURO]        diseño previsto; puede cambiar al implementarse.
 //
 // Separación obligatoria del dominio (CLAUDE.md):
