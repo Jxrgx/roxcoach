@@ -437,6 +437,7 @@ model SessionLog {
   updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   sets        SetLog[]
+  ops         ExecutionOp[]
   discomforts DiscomfortReport[]
 
   @@map("session_logs")
@@ -456,6 +457,10 @@ model SetLog {
   actualDurationSeconds Int?       @map("actual_duration_seconds")
   actualLoadKg          Float?     @map("actual_load_kg")
   rpe                   Int?
+  /// Operación del cliente que escribió esta serie (idempotencia; fase 11).
+  clientOpId            String?    @unique @map("client_op_id") @db.Uuid
+  /// Hora local del dispositivo al registrar (puede ser anterior a la sincronización).
+  recordedAt            DateTime?  @map("recorded_at") @db.Timestamptz(6)
   createdAt             DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -570,4 +575,34 @@ model AssignmentOverride {
   @@unique([assignmentId, blockIndex, exerciseIndex])
   @@index([replacementExerciseId])
   @@map("assignment_overrides")
+}
+
+// ============================================================================
+// Ejecución sin conexión (fase 11). Registro de operaciones ya procesadas para
+// que reenviar una operación (reintentos, recargas, cola local) nunca la
+// aplique dos veces. La fuente de verdad sigue siendo session_logs/set_logs.
+// ============================================================================
+
+enum ExecutionOpKind {
+  log_set
+  pause
+  resume
+  finish
+
+  @@map("execution_op_kind")
+}
+
+model ExecutionOp {
+  /// Identificador generado por el dispositivo (UUID): la llave de idempotencia.
+  opId         String          @id @map("op_id") @db.Uuid
+  sessionLogId String          @map("session_log_id") @db.Uuid
+  sessionLog   SessionLog      @relation(fields: [sessionLogId], references: [id], onDelete: Cascade)
+  kind         ExecutionOpKind
+  /// Hora local del dispositivo cuando el atleta hizo la acción.
+  clientAt     DateTime        @map("client_at") @db.Timestamptz(6)
+  /// Hora del servidor al aplicarla (sincronización).
+  processedAt  DateTime        @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@index([sessionLogId])
+  @@map("execution_ops")
 }

@@ -3,28 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAthlete } from "@/lib/auth/session";
-import {
-  findAthleteExecution,
-  finishExecution,
-  logSet,
-  pauseExecution,
-  reportDiscomfort,
-  resumeExecution,
-  saveFeedback,
-  startExecution,
-  type ExecutionLogDTO,
-} from "@/lib/db/execution";
-import type { LoggedSet, SetPosition } from "@/lib/execution/progress";
+import { reportDiscomfort, saveFeedback, startExecution } from "@/lib/db/execution";
+import { processExecutionOps } from "@/lib/db/execution-sync";
+import type { OpResult } from "@/lib/offline/queue";
 import { todayKey } from "@/lib/scheduling/dates";
 import { APP_TIME_ZONE } from "@/lib/utils/format";
 import {
   validateDiscomfort,
   validateSessionFeedback,
-  validateSetLog,
   type DiscomfortInput,
   type FieldErrors,
   type SessionFeedbackInput,
-  type SetLogInput,
 } from "@/lib/validations";
 
 /**
@@ -35,7 +24,6 @@ import {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const GENERIC_ERROR = "No se pudo guardar. Revisa tu conexión; tus datos siguen aquí.";
-const NOT_IN_PROGRESS = "Esta sesión ya no está en curso. Recarga la página.";
 
 type Fail = { ok: false; message: string };
 
@@ -47,9 +35,6 @@ function revalidateExecution(sessionId: string) {
   revalidatePath(`/atleta/sesiones/${sessionId}/resumen`);
   revalidatePath(`/coach/sesiones/${sessionId}`);
 }
-
-const isPosition = (p: SetPosition) =>
-  [p.blockIndex, p.exerciseIndex, p.setNumber].every((n) => Number.isInteger(n) && n >= 0 && n < 10_000);
 
 export async function startSessionAction(sessionId: string): Promise<Fail> {
   const athlete = await requireAthlete();
@@ -73,77 +58,27 @@ export async function startSessionAction(sessionId: string): Promise<Fail> {
   redirect(`/atleta/sesiones/${sessionId}/ejecutar`);
 }
 
-export async function logSetAction(
-  sessionId: string,
-  at: SetPosition,
-  input: SetLogInput,
-): Promise<{ ok: true; set: LoggedSet } | { ok: false; message: string; errors?: FieldErrors<keyof SetLogInput> }> {
+/**
+ * Sincroniza la cola local de la ejecución (fase 11): registrar o corregir
+ * series, pausar, reanudar y finalizar. Se procesa en orden y de forma
+ * idempotente (execution_ops); el resultado de cada operación indica si se
+ * aplicó, ya estaba, entró en conflicto, se rechazó o debe reintentarse.
+ */
+export async function syncExecutionAction(sessionId: string, ops: unknown): Promise<{ ok: true; results: OpResult[] } | Fail> {
   const athlete = await requireAthlete();
-  const position = { blockIndex: Number(at?.blockIndex), exerciseIndex: Number(at?.exerciseIndex), setNumber: Number(at?.setNumber) };
-  if (!UUID_RE.test(sessionId) || !isPosition(position)) return { ok: false, message: "La serie no existe en esta sesión." };
+  if (!UUID_RE.test(sessionId)) return { ok: false, message: "La sesión no existe." };
+  let results: OpResult[];
   try {
-    // El objetivo planeado sale del snapshot (no del cliente).
-    const execution = await findAthleteExecution(athlete.id, sessionId);
-    const planned = execution?.snapshot.blocks[position.blockIndex]?.exercises[position.exerciseIndex];
-    if (!execution || !planned) return { ok: false, message: "La serie no existe en esta sesión." };
-    const validated = validateSetLog(input, planned, athlete.weightUnit);
-    if (!validated.ok) return { ok: false, message: "Revisa los datos de la serie.", errors: validated.errors };
-    const result = await logSet(athlete.id, sessionId, position, validated.value);
-    if (!result.ok) {
-      const message = {
-        "not-found": "Esta sesión ya no está en tu agenda.",
-        "not-in-progress": NOT_IN_PROGRESS,
-        paused: "La sesión está en pausa. Reanúdala para registrar.",
-        "invalid-position": "La serie no existe en esta sesión.",
-      }[result.reason];
-      return { ok: false, message };
-    }
-    revalidatePath(`/coach/sesiones/${sessionId}`);
-    return result;
+    results = await processExecutionOps(athlete, sessionId, ops);
   } catch (error) {
-    console.error("logSetAction", error);
+    console.error("syncExecutionAction", error);
     return { ok: false, message: GENERIC_ERROR };
   }
-}
-
-type TimesOk = { ok: true; log: Pick<ExecutionLogDTO, "pausedAt" | "pausedSeconds"> };
-
-export async function pauseSessionAction(sessionId: string): Promise<TimesOk | Fail> {
-  const athlete = await requireAthlete();
-  if (!UUID_RE.test(sessionId)) return { ok: false, message: "La sesión no existe." };
-  try {
-    const result = await pauseExecution(athlete.id, sessionId);
-    return result.ok ? result : { ok: false, message: NOT_IN_PROGRESS };
-  } catch (error) {
-    console.error("pauseSessionAction", error);
-    return { ok: false, message: "No se pudo pausar. Revisa tu conexión." };
+  if (results.some((r) => r.outcome === "applied")) {
+    if (results.some((r) => r.finished)) revalidateExecution(sessionId);
+    else revalidatePath(`/coach/sesiones/${sessionId}`);
   }
-}
-
-export async function resumeSessionAction(sessionId: string): Promise<TimesOk | Fail> {
-  const athlete = await requireAthlete();
-  if (!UUID_RE.test(sessionId)) return { ok: false, message: "La sesión no existe." };
-  try {
-    const result = await resumeExecution(athlete.id, sessionId);
-    return result.ok ? result : { ok: false, message: NOT_IN_PROGRESS };
-  } catch (error) {
-    console.error("resumeSessionAction", error);
-    return { ok: false, message: "No se pudo reanudar. Revisa tu conexión." };
-  }
-}
-
-export async function finishSessionAction(sessionId: string): Promise<Fail> {
-  const athlete = await requireAthlete();
-  if (!UUID_RE.test(sessionId)) return { ok: false, message: "La sesión no existe." };
-  try {
-    const result = await finishExecution(athlete.id, sessionId);
-    if (!result.ok) return { ok: false, message: NOT_IN_PROGRESS };
-  } catch (error) {
-    console.error("finishSessionAction", error);
-    return { ok: false, message: "No se pudo finalizar. Revisa tu conexión e inténtalo de nuevo." };
-  }
-  revalidateExecution(sessionId);
-  redirect(`/atleta/sesiones/${sessionId}/resumen?finalizada=1`);
+  return { ok: true, results };
 }
 
 export async function saveFeedbackAction(

@@ -3,9 +3,8 @@ import "server-only";
 import { db } from "@/lib/db/prisma";
 import { effectivePlan, OVERRIDE_SELECT } from "@/lib/db/overrides";
 import type { EffectivePlan } from "@/lib/overrides/apply";
-import { closedPauseSeconds, isValidPosition, type ExecutionStatus, type LoggedSet, type SetPosition } from "@/lib/execution/progress";
+import type { ExecutionStatus, LoggedSet } from "@/lib/execution/progress";
 import type { DiscomfortIntensityValue, DiscomfortZoneValue } from "@/lib/execution/discomfort";
-import type { SetLogValue } from "@/lib/validations";
 
 /**
  * Ejecución de sesiones (datos REALES). Nunca escribe en scheduled_sessions ni
@@ -42,7 +41,8 @@ export interface ExecutionDTO {
   /** Plan EFECTIVO del atleta: snapshot + sus ajustes (con el original de cada ejercicio). */
   snapshot: EffectivePlan;
   log: ExecutionLogDTO | null;
-  sets: LoggedSet[];
+  /** clientOpId: operación que escribió la serie (para corregirla sin sobrescribir otra; fase 11). */
+  sets: (LoggedSet & { clientOpId: string | null })[];
   discomforts: DiscomfortDTO[];
 }
 
@@ -92,6 +92,7 @@ function toExecution(
       actualDurationSeconds: s.actualDurationSeconds,
       actualLoadKg: s.actualLoadKg,
       rpe: s.rpe,
+      clientOpId: s.clientOpId,
     })),
     discomforts: (log?.discomforts ?? []).map((d) => ({
       id: d.id,
@@ -138,79 +139,6 @@ export async function startExecution(athleteId: string, sessionId: string, today
   if (keyOf(assignment.session.scheduledDate) > today) return { ok: false, reason: "future" };
   await db().sessionLog.upsert({ where: { assignmentId: assignment.id }, create: { assignmentId: assignment.id }, update: {} });
   return { ok: true };
-}
-
-type InProgress = { ok: true; logId: string; snapshot: EffectivePlan; pausedAt: Date | null } | { ok: false; reason: "not-found" | "not-in-progress" };
-
-async function findInProgress(athleteId: string, sessionId: string): Promise<InProgress> {
-  const assignment = await findAssignment(athleteId, sessionId);
-  if (!assignment) return { ok: false, reason: "not-found" };
-  const log = await db().sessionLog.findUnique({ where: { assignmentId: assignment.id }, select: { id: true, status: true, pausedAt: true } });
-  if (!log || log.status !== "en_curso") return { ok: false, reason: "not-in-progress" };
-  return { ok: true, logId: log.id, snapshot: effectivePlan(assignment.session.snapshot, assignment.overrides), pausedAt: log.pausedAt };
-}
-
-export type LogSetResult = { ok: true; set: LoggedSet } | { ok: false; reason: "not-found" | "not-in-progress" | "paused" | "invalid-position" };
-
-/** Registra (o corrige) el resultado real de una serie mientras la sesión está en curso. */
-export async function logSet(athleteId: string, sessionId: string, at: SetPosition, value: SetLogValue): Promise<LogSetResult> {
-  // Solo las tres coordenadas (el llamador podría pasar un objeto con más campos).
-  const position = { blockIndex: at.blockIndex, exerciseIndex: at.exerciseIndex, setNumber: at.setNumber };
-  const found = await findInProgress(athleteId, sessionId);
-  if (!found.ok) return found;
-  if (found.pausedAt) return { ok: false, reason: "paused" };
-  if (!isValidPosition(found.snapshot, position)) return { ok: false, reason: "invalid-position" };
-  const where = { sessionLogId_blockIndex_exerciseIndex_setNumber: { sessionLogId: found.logId, ...position } };
-  const saved = await db().setLog.upsert({ where, create: { sessionLogId: found.logId, ...position, ...value }, update: value });
-  return {
-    ok: true,
-    set: {
-      blockIndex: saved.blockIndex,
-      exerciseIndex: saved.exerciseIndex,
-      setNumber: saved.setNumber,
-      actualReps: saved.actualReps,
-      actualDistanceMeters: saved.actualDistanceMeters,
-      actualDurationSeconds: saved.actualDurationSeconds,
-      actualLoadKg: saved.actualLoadKg,
-      rpe: saved.rpe,
-    },
-  };
-}
-
-export type TimesResult = { ok: true; log: Pick<ExecutionLogDTO, "pausedAt" | "pausedSeconds"> } | { ok: false; reason: "not-found" | "not-in-progress" };
-
-export async function pauseExecution(athleteId: string, sessionId: string): Promise<TimesResult> {
-  const found = await findInProgress(athleteId, sessionId);
-  if (!found.ok) return found;
-  // Solo si no estaba en pausa (doble toque o dos pestañas).
-  await db().sessionLog.updateMany({ where: { id: found.logId, status: "en_curso", pausedAt: null }, data: { pausedAt: new Date() } });
-  const log = await db().sessionLog.findUniqueOrThrow({ where: { id: found.logId }, select: { pausedAt: true, pausedSeconds: true } });
-  return { ok: true, log };
-}
-
-export async function resumeExecution(athleteId: string, sessionId: string): Promise<TimesResult> {
-  const found = await findInProgress(athleteId, sessionId);
-  if (!found.ok) return found;
-  if (found.pausedAt) {
-    await db().sessionLog.updateMany({
-      where: { id: found.logId, pausedAt: found.pausedAt },
-      data: { pausedAt: null, pausedSeconds: { increment: closedPauseSeconds(found.pausedAt, new Date()) } },
-    });
-  }
-  const log = await db().sessionLog.findUniqueOrThrow({ where: { id: found.logId }, select: { pausedAt: true, pausedSeconds: true } });
-  return { ok: true, log };
-}
-
-/** Finaliza (aunque falten series: quedan como no realizadas). Cierra la pausa abierta. */
-export async function finishExecution(athleteId: string, sessionId: string): Promise<{ ok: boolean }> {
-  const found = await findInProgress(athleteId, sessionId);
-  if (!found.ok) return { ok: false };
-  const now = new Date();
-  const result = await db().sessionLog.updateMany({
-    where: { id: found.logId, status: "en_curso" },
-    data: { status: "completada", finishedAt: now, pausedAt: null, pausedSeconds: { increment: closedPauseSeconds(found.pausedAt, now) } },
-  });
-  return { ok: result.count === 1 };
 }
 
 /** RPE general y comentario: lo único editable después de finalizar. */

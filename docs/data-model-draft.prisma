@@ -34,6 +34,10 @@
 //                   sustitución congelada, omisión, "sin carga" y auditoría
 //                   (created_by/updated_by). Reemplaza el campo "overrides Json?"
 //                   previsto en Assignment — ver prisma/schema.prisma.
+//   [FASE 11]       ejecución sin conexión: ExecutionOp (execution_ops), registro de
+//                   operaciones ya procesadas (idempotencia), y set_logs con
+//                   client_op_id (único) y recorded_at (hora local) — ver
+//                   prisma/schema.prisma.
 //   [FUTURO]        diseño previsto; puede cambiar al implementarse.
 //
 // Separación obligatoria del dominio (CLAUDE.md):

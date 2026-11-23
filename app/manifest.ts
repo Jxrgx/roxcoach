@@ -1,6 +1,10 @@
 import type { MetadataRoute } from "next";
 
-/** Manifest PWA. El service worker y el modo offline llegarán en una fase posterior. */
+/**
+ * Manifest PWA. Sin service worker por decisión (fase 11): la ejecución resiste
+ * cortes de conexión con una cola local en IndexedDB (ver docs/architecture.md),
+ * sin cachear HTML privado.
+ */
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "RoxCoach",

@@ -16,6 +16,8 @@ interface TimerProps {
   autoStart?: boolean;
   /** Oculta Iniciar/Reiniciar cuando la pantalla ya tiene su propia acción principal. */
   showControls?: boolean;
+  /** Inicio real (ms) de un temporizador que arrancó antes (p. ej. tras recargar o suspender). */
+  startedAtMs?: number;
   /** Se llama una vez al terminar la cuenta regresiva. */
   onComplete?: () => void;
 }
@@ -31,6 +33,7 @@ export function Timer({
   label,
   className,
   autoStart = false,
+  startedAtMs,
   showControls = true,
   onComplete,
 }: TimerProps) {
@@ -44,7 +47,8 @@ export function Timer({
   });
 
   useEffect(() => {
-    if (autoStart) startedAt.current = Date.now();
+    // Se calcula desde la hora de inicio: si la pestaña se suspendió, retoma el tiempo correcto.
+    if (autoStart) startedAt.current = startedAtMs ?? Date.now();
     // Solo al montarse.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

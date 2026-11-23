@@ -34,6 +34,7 @@ export default async function ExecutePage({ params }: PageProps<"/atleta/sesione
       </Link>
       <ExecutionScreen
         sessionId={execution.sessionId}
+        userId={athlete.id}
         title={execution.title}
         snapshot={execution.snapshot}
         unit={athlete.weightUnit}

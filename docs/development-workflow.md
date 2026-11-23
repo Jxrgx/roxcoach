@@ -126,3 +126,8 @@ Después de cada pantalla, revísala en 360, 390, tablet y desktop. Confirma que
   - Cada prueba crea su **propio coach** y dos atletas activos; la sesión se inserta con un snapshot fijo. Borrar al coach elimina en cascada sesiones, asignaciones, ajustes y registros (el trigger de ajustes permite los borrados en cascada).
   - En el editor, cada acordeón se ubica por su `summary` (el contenido incluye los nombres de otros ejercicios en el selector de reemplazo) y su título cambia al sustituir el ejercicio.
   - Además de la UI, prueban los triggers con SQL: ajustes bloqueados tras comenzar o en sesión cancelada y series rechazadas en un ejercicio omitido.
+- **Datos de prueba de la fase 11** (`offline.spec.ts`):
+  - Cada prueba crea su **propio coach** y atleta; sin red con `context.setOffline(true)`. Para simular un servidor caído con el navegador "en línea", se abortan solo los POST (Server Actions) de esa sesión con `context.route` y una bandera.
+  - El estado de envío se localiza dentro de `main` (el shell tiene su propio aviso "Sin conexión") y "Guardado" se compara exacto (también existe "Guardado localmente").
+  - El temporizador tras suspender se prueba con `page.clock.install()` + `clock.fastForward()` (pasa el tiempo sin ticks).
+  - Para revisar la cola local en una prueba: `indexedDB.open("roxcoach-ejecucion")`, almacén `ops`.

@@ -315,6 +315,35 @@ Salvo molestias, se excluyen sesiones canceladas y asignaciones retiradas.
 
 **Interfaz:** editor por ejercicio (acordeones con "Plan original" y "Ajuste para este atleta"), resumen de cambios antes de guardar, vista previa de la versión del atleta, "Restaurar original" por ejercicio y "Restaurar todo" con confirmación, aviso al descartar cambios. Única acción fija: "Guardar personalización". Bloqueada con mensaje claro si el atleta ya comenzó, la sesión se canceló, el atleta fue retirado o está en pausa.
 
+## Ejecución sin conexión (fase 11)
+
+**Estrategia:** un solo camino para online y offline. Cada acción de la ejecución (registrar o corregir una serie, pausar, reanudar, finalizar) es una **operación** con un id UUID generado en el dispositivo: se guarda en IndexedDB, se muestra de inmediato (las series locales nunca se ocultan) y se envía en orden con `syncExecutionAction`. Con red se envía al instante; sin red queda pendiente y se reintenta al volver la conexión (evento `online`), cada 15 s mientras haya pendientes, o con "Reintentar". El servidor sigue siendo la fuente de verdad.
+
+**Cola local** (`lib/offline/queue.ts` puro + `lib/offline/idb.ts`, API nativa sin dependencias):
+- Base `roxcoach-ejecucion`, versión = `QUEUE_SCHEMA_VERSION` (1). Almacenes: `ops` (llave `opId`, índice `[userId, sessionId]`) y `state` (descanso en curso).
+- Una operación guarda solo: `opId`, `userId`, `sessionId`, `seq` (orden), `kind`, `createdAt` (hora local), `status` (pendiente, enviando, rechazada, conflicto), intentos, motivo, y para series la posición, lo capturado (texto) y qué esperaba encontrar (`expect`). Nunca tokens, credenciales ni lo planeado. Al servidor viaja solo `toWire(op)`.
+- Separación por usuario: todo se lee filtrado por el `userId` de la sesión (dispositivo compartido sin fugas).
+- Limpieza: aplicadas y duplicadas se borran al confirmarse; rechazadas y conflictos se conservan hasta que el atleta las descarta (en la ejecución o en el resumen).
+- Migración: `onupgradeneeded` crea o migra almacenes y `migrateOp` convierte cada registro de esquemas anteriores al leerlo (los irreconocibles se descartan).
+- Si IndexedDB no está disponible, se usa memoria y se avisa al atleta que mantenga la conexión.
+
+**Sincronización** (`lib/db/execution-sync.ts`, `lib/offline/server-rules.ts`): procesa el lote **en orden**, cada operación en su propia transacción junto con su fila en `execution_ops`. Resultado por operación:
+- `applied` · `duplicate` (ya procesada: no se aplica otra vez y cuenta como éxito);
+- `conflict` (la sesión ya había finalizado; la serie ya tenía otro resultado; o cambió después de corregirla) → el dato se conserva en el dispositivo con el motivo;
+- `rejected` (validación definitiva: forma inválida, serie que no existe en el plan personalizado vigente u omitida, valores fuera de rango, sesión en pausa) → se explica el motivo;
+- `retry` (error temporal) → se detiene y las siguientes quedan `skipped` para conservar el orden.
+- Valida sesión, atleta, asignación vigente, ejecución en curso, posición y plan personalizado en el servidor; lo planeado nunca viene del cliente.
+- **Sin sobrescrituras automáticas:** una serie "nueva" exige la posición vacía; una corrección exige que la serie siga teniendo el `client_op_id` que el atleta vio (`decideSetWrite`).
+- **Horas del dispositivo acotadas** (`clampClientTime`): nunca antes del inicio ni de la última operación aplicada, ni en el futuro. `set_logs.recorded_at` guarda la hora local; `created_at`/`updated_at` la de sincronización. Las pausas sin conexión cuentan con su hora local.
+
+**Modelo** (migraciones `add_execution_ops` y `fix_recorded_at_check`): `execution_ops` (`op_id` PK, `session_log_id` en cascada, `kind`, `client_at`, `processed_at`; RLS sin políticas) y en `set_logs` las columnas `client_op_id` (único) y `recorded_at` (CHECK: no más de 5 min después de su última escritura). Un `op_id` de otra ejecución se rechaza.
+
+**Temporizadores:** solo timestamps. Tiempo activo = (fin, pausa abierta o ahora) − inicio − pausas (`activeSeconds`), con las pausas locales pendientes plegadas encima (`foldPauses`); el descanso se guarda como `{ startedAt, seconds }` en IndexedDB y se recalcula al volver (`restRemaining`, `Timer` con `startedAtMs`). Suspender la pestaña o recargar no pierde ni duplica tiempo; al reconectar, los segundos pausados los calcula una sola vez el servidor.
+
+**PWA:** sin service worker (decisión de la fase). Ventaja: no se cachea HTML privado ni se sirve información de otro usuario. Consecuencia: recargar sin red muestra la página del navegador, pero los datos siguen en IndexedDB y se envían al volver a abrir la ejecución con red.
+
+**Interfaz:** estado breve siempre visible (`SyncStatus`, `role="status"` con `aria-live`, icono + texto): En línea · Sin conexión · Guardado localmente (N pendientes) · Sincronizando · Guardado · Revisa los datos sin enviar. Panel de datos sin enviar (`SyncPanel`) debajo de la acción principal: qué quedó, qué pasó y "Descartar". Finalizar sin red queda en cola ("Entrenamiento finalizado en este dispositivo" + "Reintentar envío"); la confirmación avisa cuántos registros siguen sin enviar.
+
 ## Estados de pantalla
 
 Toda pantalla con datos envuelve su contenido en `ScreenStates` (`components/shared/screen-states.tsx`):

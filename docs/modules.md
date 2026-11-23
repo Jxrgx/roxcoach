@@ -1,6 +1,6 @@
 # Módulos
 
-## Estado actual (fase 10)
+## Estado actual (fase 11)
 
 | Módulo | Estado | Notas |
 | --- | --- | --- |
@@ -20,7 +20,8 @@
 | Progreso y métricas | ✅ Validado con Supabase | Solo datos reales; excluye sesiones canceladas y asignaciones retiradas. **Atleta** (`/atleta/progreso`): adherencia del periodo (7/30/90 días o todo) con desglose (asignadas, iniciadas, completadas, no realizadas, abandonadas, en curso o pendientes), completadas en 7/30/90 días, tiempo entrenado, RPE promedio, marcas personales y evolución por ejercicio (mismo ejercicio y objetivo; estaciones HYROX por id) y molestias. **Coach** (`/coach/progreso`): adherencia del grupo, atletas que requieren atención (baja adherencia < 70 % con ≥ 3 sesiones, molestias), lista por atleta y filtros por periodo, atleta y estado (panel inferior en mobile); detalle por atleta (`/coach/progreso/[id]`) con planeado vs. realizado. Cada métrica indica periodo, sesiones usadas y si los datos son insuficientes |
 | Avisos operativos | ✅ Validado con Supabase | Bandeja `/coach/avisos` con avisos de atletas activos del coach, solo de datos reales de los últimos 30 días: molestia (prioritaria, con aviso de que no es un diagnóstico médico), sesión finalizada incompleta, RPE alto (≥ 9), sesión en curso más de 5 h, sesión no iniciada y nuevo atleta. Orden por prioridad y fecha; filtros por estado (sin leer, leídos, todos) y tipo en panel inferior (mobile); marcar uno o todos como leídos con historial. Los avisos de sesión no iniciada se resuelven solos cuando el atleta la comienza, se cancela o se le retira (quedan en el historial). Resumen de los 3 más importantes en Inicio y contador en la navegación (campana en mobile, "Avisos" en la barra lateral). Sin correo, push ni tiempo real |
 | Personalización por atleta | ✅ Validada con Supabase | Desde el detalle de la sesión, "Personalizar" abre `/coach/sesiones/[id]/atletas/[athleteId]/personalizar`: por ejercicio (acordeones) se ajustan series, objetivo (mismo tipo que el original), carga en la unidad del coach o "sin carga", descanso y nota; se sustituye por un ejercicio del sistema o propio no archivado (cualquier categoría, primero las sugeridas) o se omite. Resumen de cambios, vista previa de la versión del atleta, "Restaurar original" por ejercicio y "Restaurar todo". Solo antes de que el atleta comience, con relación activa, asignación vigente y sesión programada. El atleta ve y ejecuta su versión ("Adaptado para ti", "Ejercicio omitido"); resultados, progreso y avisos usan el plan personalizado y distinguen omitida de no realizada. La plantilla y el snapshot nunca cambian |
-| PWA | 🟡 Preparada | Manifest e icono; sin service worker |
+| Ejecución sin conexión | ✅ Validada con Supabase | La ejecución sigue funcionando si se corta la red: cada serie, pausa, reanudación y finalización se guarda primero en el dispositivo (IndexedDB), se ve de inmediato y se envía en orden al volver la conexión (o con "Reintentar"). Estado breve siempre visible: En línea · Sin conexión · Guardado localmente (N pendientes) · Sincronizando · Guardado. Reenviar nunca duplica (operaciones idempotentes). Conflictos (p. ej. la sesión ya había finalizado) y rechazos se explican en un panel y el dato se conserva hasta que el atleta lo descarta. Finalizar sin conexión queda en cola. Descanso y tiempo activo se recalculan desde timestamps tras suspender o recargar. Sin service worker: recargar sin red muestra la página del navegador, pero los datos no se pierden |
+| PWA | 🟡 Preparada | Manifest e icono; sin service worker (decisión de la fase 11: no se cachea HTML privado) |
 | Base de datos | 🟡 En crecimiento | Prisma 7 + PostgreSQL: identidad, perfiles, atletas e invitaciones, ejercicios, plantillas, sesiones programadas, asignaciones y registros realizados (sesión, series y molestias). Pendiente (mensajes) en `docs/data-model-draft.prisma` |
 
 ### Acciones todavía en vista previa (datos ficticios)
@@ -42,7 +43,7 @@ Orden sugerido según la prioridad de uso:
 3. ~~Biblioteca de ejercicios~~: completado en la fase 4. Para después: subida de archivos (Storage), categorías propias del coach y enlace del atleta desde sus sesiones.
 4. ~~Constructor de entrenamientos~~: completado en la fase 5. Para después: arrastrar y soltar, superseries/rondas por bloque y estimación automática de duración.
 5. ~~Programación y asignación~~: completado en la fase 6; la personalización por atleta se completó en la fase 10. Para después: sesiones repetidas y arrastrar en el calendario.
-6. ~~Ejecución del atleta~~: completado en la fase 7. Para después: modo sin conexión con cola de envío, avisos al coach, sustituir ejercicio durante la sesión y video dentro de la ejecución.
+6. ~~Ejecución del atleta~~: completado en la fase 7; resistencia a cortes de conexión en la fase 11. Para después: recargar la ejecución sin red (service worker), sincronización entre varios dispositivos, sustituir ejercicio durante la sesión y video dentro de la ejecución.
 7. ~~Resultados y progreso~~: completado en la fase 8. Para después: tiempo y ritmo en series de distancia (requiere capturar el tiempo), conectar el Inicio del coach con datos reales y comparativas por bloque de entrenamiento.
 8. **Mensajes.** Conversaciones y comentarios por sesión.
 

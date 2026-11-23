@@ -10,6 +10,7 @@ import { formatClock } from "@/lib/utils/format";
 import { DiscomfortList, ExecutionProgress, ExecutionResults } from "@/components/workouts/execution-results";
 import { SessionFeedbackForm } from "@/components/athlete/session-feedback-form";
 import { ReportDiscomfortButton } from "@/components/athlete/report-discomfort-button";
+import { LocalLeftovers } from "@/components/athlete/local-leftovers";
 
 export const metadata: Metadata = { title: "Resumen" };
 
@@ -65,6 +66,8 @@ export default async function SummaryPage({ params, searchParams }: PageProps<"/
           </div>
         </dl>
       </header>
+
+      <LocalLeftovers userId={athlete.id} sessionId={id} snapshot={execution.snapshot} unit={athlete.weightUnit} />
 
       <SessionFeedbackForm sessionId={id} initial={{ rpe: log.rpe ? String(log.rpe) : "", comment: log.comment ?? "" }} />
 
