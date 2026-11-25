@@ -85,6 +85,74 @@ Además prueba los cinco estados de vista previa en cada pantalla con datos, y l
   - recorre todos los módulos seguidos;
   - prueba la sesión expirada (lleva al login conservando el destino) y el rol incorrecto.
 
+### Dataset de demostración (`roxcoach-dev`)
+
+Para mostrar RoxCoach con datos realistas al coach existente (`jorgocios@gmail.com`), sin usar la suite e2e.
+
+> **Base:** el dataset vive en **`roxcoach-dev`**, la misma base que usa temporalmente la demo publicada en Vercel (`https://roxcoach-orpin.vercel.app`). **Nunca** lo ejecutes contra una futura base de producción real. El script lo impide: `DEMO_TARGET_PROJECT_REF` debe coincidir con el proyecto de `NEXT_PUBLIC_SUPABASE_URL` y `DIRECT_URL`, y la validación de Vercel rechaza las variables `DEMO_*`.
+
+**Variables locales** (`.env.local`, nunca en el repositorio ni en Vercel):
+
+| Variable | Para qué |
+| --- | --- |
+| `DEMO_TARGET_PROJECT_REF` | Ref de `roxcoach-dev` (el subdominio de `NEXT_PUBLIC_SUPABASE_URL`). Si no coincide, el script se detiene |
+| `DEMO_EXISTING_COACH_EMAIL` | Opcional; por defecto `jorgocios@gmail.com` |
+| `DEMO_ATHLETE_ACTIVE_EMAIL` y `_PASSWORD` | Atleta Demo Activo |
+| `DEMO_ATHLETE_PAUSED_EMAIL` y `_PASSWORD` | Atleta Demo En Pausa |
+| `DEMO_ATHLETE_PROGRESS_EMAIL` y `_PASSWORD` | Atleta Demo Progreso |
+
+Usa correos que controles (por ejemplo `tu+demo-activo@...`). Nunca `@example.com`. Las cuentas se crean ya confirmadas, **sin enviar correos**. También se necesitan `SUPABASE_SECRET_KEY` y `DIRECT_URL` de desarrollo.
+
+**Comandos:**
+
+- `npm run demo:seed`: crea el dataset.
+  - **Coach:** lo busca por correo exacto y se detiene si no existe, si no es coach o si no tiene `coach_profile`. **Nunca lo modifica.**
+  - **Idempotente:** si ya hay un dataset (manifiesto) o restos, se detiene sin tocar nada.
+  - **Transacción:** los datos de la base se insertan en una sola, respetando triggers y CHECKs.
+  - **Manifiesto:** guarda todos los ids exactos y la etiqueta `ROXCOACH_DEMO_<timestamp>` en `.demo/roxcoach-demo.json` (ignorado por Git, sin secretos). La etiqueta también queda en `user_metadata.demo_tag` de los atletas.
+- `npm run demo:status`: verificación de **solo lectura**. Comprueba:
+  - ids presentes y del coach;
+  - avisos generados;
+  - que no haya relaciones cruzadas;
+  - datos ajenos intactos.
+- `npm run demo:cleanup -- --confirm ROXCOACH_DEMO_<timestamp>`: borra el dataset.
+  - Solo por **ids exactos**, con los dueños y las cantidades verificados, en una transacción.
+  - Aborta ante cualquier diferencia. Con `--accept-changes` admite solo las diferencias dentro del dataset, como series que un atleta demo registró al usar la demo.
+  - Nunca borra al coach, a los usuarios compartidos de las e2e ni datos históricos.
+
+**Qué crea el dataset:**
+
+- **Atletas:** 3, con relación con el coach.
+  - **Activo:** con sesión de hoy personalizada.
+  - **En pausa:** con historial.
+  - **Progreso:** 5 sesiones completadas, cargas crecientes y RPE.
+- **Plantillas:** 3 (`DEMO — …`): dos publicadas y un borrador.
+- **Sesiones:** 10, relativas a hoy en la zona de la app: historial, hoy, una futura y una cancelada.
+- **Personalizaciones:** 2.
+- **Ejecuciones:** con resultados distintos a lo planeado y una molestia de prueba.
+- **Avisos:** **no se insertan**. Los genera la app con sus reglas al abrir el panel del coach: RPE alto, molestia, sesión no iniciada y nuevos atletas. Para el atleta en pausa no se genera ninguno, que es la regla vigente.
+- **No existe en el modelo:** el peso corporal (solo la unidad de peso).
+
+**Rutas para la demostración** (como coach): `/coach/inicio`, `/coach/atletas` (y el detalle de cada atleta), `/coach/entrenamientos` (y el detalle de cada plantilla), `/coach/calendario`, `/coach/sesiones/<id>` (y `/atletas/<id>` y `/personalizar`), `/coach/progreso` y `/coach/avisos`.
+
+Como atleta demo: `/atleta/inicio`, `/atleta/agenda`, `/atleta/sesiones` y `/atleta/progreso`.
+
+**No ejecutes `npm run test:e2e` mientras se muestra la demo:** las e2e crean y borran usuarios propios en la misma base. No tocan el dataset, pero cargan la base durante la presentación.
+
+### Despliegue en Vercel (fase 15)
+
+- **Ambientes:**
+  - Development: local, `.env.local`, `roxcoach-dev`;
+  - Preview: ramas, `roxcoach-dev`;
+  - Production: `main`, `roxcoach-prod`.
+
+  Ver `docs/deployment.md`.
+- **Variables nuevas:** si agregas una variable, regístrala en `ENV_VARS` y en `.env.example`, e indica en qué ambientes de Vercel va. Las variables de pruebas nunca se suben a Vercel; la validación las rechaza.
+- **Migraciones:** nunca las agregues al build. Se aplican con `npm run db:migrate` desde tu terminal, con la `DIRECT_URL` del proyecto destino. Después ejecuta `npm run db:audit`.
+- **Variables en el dashboard:** un cambio en Vercel requiere un **nuevo deployment**.
+- **`next.config.ts`:** no importes ahí módulos que también usa la app (p. ej. `lib/config/env-rules`). En `next dev` provoca un bucle de recargas infinito; una prueba unitaria lo impide. Para lógica del build usa `scripts/` (como `check-build-env.mjs`).
+- **Región:** si cambias la región de Supabase de producción, cambia también `regions` en `vercel.json`. Una prueba unitaria fija `pdx1`, para que el cambio sea deliberado.
+
 ### Datos de prueba y limpieza (cierre de la fase 14)
 
 - **Solo lo que la prueba crea, por id exacto.** Cada spec que escribe en la base de datos usa `TestData` (`tests/e2e/cleanup.ts`):

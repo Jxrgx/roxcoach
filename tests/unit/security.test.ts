@@ -72,7 +72,7 @@ describe("variables de entorno", () => {
   it(".env.example documenta exactamente las variables del catálogo, sin valores reales", () => {
     const example = readFileSync(".env.example", "utf8");
     const names = [...example.matchAll(/^([A-Z0-9_]+)=/gm)].map((m) => m[1]);
-    expect(names.sort()).toEqual(ENV_VARS.map((v) => v.name).sort());
+    expect(names.sort()).toEqual(ENV_VARS.filter((v) => !v.managedByPlatform).map((v) => v.name).sort());
     // Solo marcadores: nada que parezca una llave o una contraseña real.
     expect(example).not.toMatch(/sb_(secret|publishable)_(?!xxx\b)\w+/);
     expect(example).not.toMatch(/eyJ[\w-]{10,}/);

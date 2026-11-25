@@ -1,6 +1,6 @@
 # Módulos
 
-## Estado actual (fase 14)
+## Estado actual (fase 15)
 
 | Módulo | Estado | Notas |
 | --- | --- | --- |
@@ -24,6 +24,7 @@
 | PWA y recarga offline | ✅ Validada | Instalable: manifest completo (standalone, vertical, colores) e iconos PNG 192/512, maskable y apple-touch-icon. Service worker mínimo propio: navegaciones a la red y, solo si fallan, redirección a una página offline estática (el shell de la ejecución con `?sesion=` o `/sin-conexion?desde=`); estáticos con hash, iconos y manifest desde caché. Nunca cachea HTML de `/atleta` o `/coach`, respuestas privadas, Supabase, RSC ni Server Actions. Al recargar una ejecución sin red se restaura desde IndexedDB ("Restaurado desde el dispositivo") con pendientes y conflictos, se puede seguir y finalizar; al volver la red carga la ruta real y sincroniza. Cerrar sesión borra los datos privados del atleta en el dispositivo (avisa si hay registros sin enviar). RPE, molestias y comentario siguen requiriendo conexión y lo indican |
 | Preparación para producción | ✅ Validada (falta configurar staging/producción y SMTP real) | Configuración por ambiente validada al arrancar (`APP_URL` obligatoria en producción), enlaces de correo e invitación siempre desde `APP_URL`, confirmación con `token_hash` + `type=email` y retorno seguro, cabeceras de seguridad con CSP aplicada (sin nonce) y HSTS con https, registro seguro sin datos sensibles, health check `/api/health`, privilegios mínimos en la base de datos y auditoría `npm run db:audit`. Guías en `docs/deployment.md` y `docs/security.md`. Sin recuperación de contraseña ni servicio de observabilidad externo |
 | Rendimiento y navegación | ✅ Validado | 404 real en cargas directas de detalles inexistentes o ajenos (proxy) y 307 para sesión o rol incorrecto. Navegación instantánea: cada página muestra su estructura (título y acciones) al instante y sus datos llegan por streaming detrás de Suspense, sin errores de Next en desarrollo (`npm run check:instant`). Sesión en una lectura, relaciones de Prisma con JOIN (`relationJoins`), conexiones reutilizadas, sin waterfalls en Inicio, Avisos y Entrenamiento. Ningún dato privado se cachea. Medición reproducible con `npm run measure:nav` |
+| Despliegue en Vercel | 🟡 Preparado, sin publicar | Ambientes Development/Preview → `roxcoach-dev` y Production → `roxcoach-prod`. Validación de variables en el build y al arrancar (pruebas prohibidas en Vercel, proyectos mezclados detectados, `APP_URL` de Preview por rama). Región `pdx1` junto a Supabase us-west-2, Node 24.x. Checklist de 24 pasos y rollback en `docs/deployment.md`. URL de producción `https://roxcoach.vercel.app` (sin dominio propio; `APP_URL` validada contra `VERCEL_PROJECT_PRODUCTION_URL`). SMTP propio opcional en el piloto. Pendiente manual: crear `roxcoach-prod` y el proyecto de Vercel |
 | Base de datos | 🟡 En crecimiento | Prisma 7 + PostgreSQL: identidad, perfiles, atletas e invitaciones, ejercicios, plantillas, sesiones programadas, asignaciones y registros realizados (sesión, series y molestias). Pendiente (mensajes) en `docs/data-model-draft.prisma` |
 
 ### Acciones todavía en vista previa (datos ficticios)

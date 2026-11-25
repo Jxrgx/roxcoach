@@ -68,3 +68,20 @@ export function securityHeaders(options: HeaderOptions): { key: string; value: s
   }
   return headers;
 }
+
+/**
+ * Origen público para decidir HSTS y upgrade-insecure-requests en el build.
+ * MISMO criterio que `effectiveAppUrl` (lib/config/env-rules.ts), pero aquí
+ * porque next.config.ts no debe importar módulos que también usa la app: en
+ * `next dev` eso provoca un bucle de recargas (comprobado en la fase 15). Una
+ * prueba unitaria verifica que ambos coincidan.
+ */
+export function headersAppUrl(env: Record<string, string | undefined>): string | undefined {
+  const explicit = env.APP_URL?.trim();
+  if (explicit) return explicit;
+  if (env.VERCEL === "1" && env.VERCEL_ENV === "preview") {
+    const host = env.VERCEL_BRANCH_URL?.trim() || env.VERCEL_URL?.trim();
+    if (host) return `https://${host.replace(/^https?:\/\//, "")}`;
+  }
+  return undefined;
+}

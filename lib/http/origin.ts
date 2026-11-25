@@ -1,7 +1,7 @@
 import "server-only";
 
 import { headers } from "next/headers";
-import { resolvePublicOrigin } from "@/lib/config/env-rules";
+import { effectiveAppUrl, resolvePublicOrigin } from "@/lib/config/env-rules";
 
 /** Origen de la petición según sus cabeceras (NO confiable: solo como pista en desarrollo). */
 async function requestHeaderOrigin(): Promise<string | null> {
@@ -20,10 +20,11 @@ async function requestHeaderOrigin(): Promise<string | null> {
  * petición nunca deciden a dónde apunta un enlace (ver lib/config/env-rules).
  */
 export async function publicOrigin(): Promise<string> {
+  const appUrl = effectiveAppUrl(process.env);
   const origin = resolvePublicOrigin({
-    appUrl: process.env.APP_URL,
+    appUrl,
     allowedOrigins: process.env.ALLOWED_ORIGINS,
-    requestOrigin: process.env.APP_URL ? null : await requestHeaderOrigin(),
+    requestOrigin: appUrl ? null : await requestHeaderOrigin(),
     production: process.env.NODE_ENV === "production",
   });
   if (!origin) throw new Error("Falta APP_URL: es obligatoria en producción (ver docs/deployment.md).");

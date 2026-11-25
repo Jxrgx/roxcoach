@@ -56,6 +56,9 @@ logs/
 /backups/
 /dumps/
 
+# dataset de demostración: manifiesto local con ids (no se versiona)
+/.demo/
+
 # bases de datos locales generadas
 *.sqlite
 *.sqlite3

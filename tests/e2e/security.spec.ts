@@ -321,3 +321,43 @@ test.describe("inyección de cabecera Host", () => {
     }
   });
 });
+
+/* ---------- Fase 15: caché en producción (Vercel) ---------- */
+
+test.describe("caché de respuestas (CDN de Vercel)", () => {
+  test.describe(() => {
+    test.use({ storageState: COACH_STATE });
+    test("las páginas con sesión nunca se cachean y llevan los datos del usuario", async ({ page }) => {
+      for (const path of ["/coach/inicio", "/coach/atletas", "/coach/avisos"]) {
+        const res = await page.request.get(path, { headers: { accept: "text/html" } });
+        expect(res.status(), path).toBe(200);
+        const cache = res.headers()["cache-control"] ?? "";
+        expect(cache, path).toMatch(/private/);
+        expect(cache, path).toMatch(/no-store/);
+        expect(cache, path).not.toMatch(/s-maxage|public/);
+      }
+    });
+  });
+
+  test.describe(() => {
+    test.use({ storageState: ATHLETE_STATE });
+    test("la app del atleta tampoco se cachea", async ({ page }) => {
+      for (const path of ["/atleta/inicio", "/atleta/progreso", "/atleta/perfil"]) {
+        const cache = (await page.request.get(path, { headers: { accept: "text/html" } })).headers()["cache-control"] ?? "";
+        expect(cache, path).toMatch(/private.*no-store|no-store.*private/);
+      }
+    });
+  });
+
+  test("lo que sí se cachea es público y no contiene datos de ningún usuario", async ({ request }) => {
+    const { coachId, athleteId } = readSeedIds();
+    for (const path of ["/login", "/registro", "/offline/ejecucion", "/sin-conexion"]) {
+      const res = await request.get(path, { headers: { accept: "text/html" } });
+      expect(res.headers()["set-cookie"], path).toBeUndefined();
+      const body = await res.text();
+      for (const id of [coachId, athleteId]) expect(body.includes(id), `${path} no incluye ids de usuarios`).toBe(false);
+      expect(body, path).not.toMatch(/Coach Pruebas|Atleta Pruebas/);
+    }
+    expect((await request.get("/api/health")).headers()["cache-control"]).toBe("no-store");
+  });
+});

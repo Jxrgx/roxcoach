@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
-import { securityHeaders } from "./lib/security/headers";
+// IMPORTANTE: no importes aquí módulos que también usa la app (p. ej. lib/config/env-rules):
+// en `next dev` provoca un bucle de recargas. La validación de variables del build
+// está en scripts/check-build-env.mjs (se ejecuta antes de `next build`).
+import { headersAppUrl, securityHeaders } from "./lib/security/headers";
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
@@ -17,7 +20,7 @@ const nextConfig: NextConfig = {
   async headers() {
     const security = securityHeaders({
       supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-      appUrl: process.env.APP_URL,
+      appUrl: headersAppUrl(process.env),
       development: process.env.NODE_ENV !== "production",
     });
     return [

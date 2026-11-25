@@ -1,7 +1,7 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { allowedOrigins } from "@/lib/config/env-rules";
+import { allowedOrigins, effectiveAppUrl } from "@/lib/config/env-rules";
 import { confirmNextPath, isRole, safeNextPath } from "@/lib/permissions";
 
 /** Tipos de enlace que esta ruta acepta (registro y correo). */
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
   const role = (data?.claims?.app_metadata as { role?: unknown } | undefined)?.role;
   if (!isRole(role)) return NextResponse.redirect(new URL("/auth/salir?error=perfil", request.url));
 
-  const origins = [...allowedOrigins({ APP_URL: process.env.APP_URL, ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS }), request.nextUrl.origin];
+  const origins = [...allowedOrigins({ APP_URL: effectiveAppUrl(process.env), ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS }), request.nextUrl.origin];
   const next = confirmNextPath(searchParams.get("next"), origins);
   return NextResponse.redirect(new URL(safeNextPath(next, role), request.url));
 }

@@ -26,7 +26,7 @@ Las reglas permanentes de desarrollo, diseño y UX están en [CLAUDE.md](CLAUDE.
 
 ## Configuración (primera vez)
 
-Requisitos: Node.js 20.9 o superior (22 LTS recomendado para producción; probado con Node 24) y un proyecto de Supabase **de desarrollo**.
+Requisitos: Node.js 24.x (la versión fijada en `engines` y la que usa Vercel) y un proyecto de Supabase **de desarrollo**.
 
 1. **Instala dependencias.** Al terminar, genera el cliente de Prisma automáticamente.
    ```bash
@@ -53,6 +53,16 @@ Para probar el build de producción en local (`npm run build && npm start`) agre
 
 ## Producción
 
+Despliegue piloto en **Vercel** con **Supabase**, preparado pero todavía no publicado:
+
+```text
+Vercel
+  ├── Development → roxcoach-dev
+  ├── Preview     → roxcoach-dev
+  └── Production  → roxcoach-prod (https://roxcoach.vercel.app)
+```
+
+
 - [docs/deployment.md](docs/deployment.md): ambientes, variables, Supabase (URLs y plantilla de confirmación), SMTP y DNS, migraciones, respaldo y restauración, health check y orden seguro de despliegue.
 - [docs/security.md](docs/security.md): controles de seguridad, cabeceras, registro seguro y pendientes.
 
@@ -72,6 +82,7 @@ Para probar el build de producción en local (`npm run build && npm start`) agre
 | `npm run db:generate` | Regenera el cliente de Prisma |
 | `npm run db:migrate` | Aplica migraciones pendientes (`prisma migrate deploy`) |
 | `npm run db:status` | Estado de las migraciones |
+| `npm run demo:seed` · `demo:status` · `demo:cleanup` | Dataset de demostración en `roxcoach-dev` para el coach existente (ver docs/development-workflow.md) |
 | `npm run db:residue` | Reporte de solo lectura de datos de prueba (conteos, usuarios compartidos, residuos) |
 | `npm run db:audit` | Auditoría de solo lectura: RLS, privilegios, funciones y migraciones |
 | `npm run db:studio` | Explorador de datos de Prisma |
@@ -122,6 +133,7 @@ components/shared/page-skeletons.tsx  Fallbacks de Suspense por página (fase 14
   mock/              Datos ficticios de los módulos aún no implementados
 prisma/              Esquema activo, migraciones y seed
 instrumentation.ts   Valida la configuración al arrancar en producción
+vercel.json          Framework y región de funciones (pdx1, junto a Supabase us-west-2)
 scripts/db-audit.mjs Auditoría de la base de datos (solo lectura)
 scripts/check-instant.mjs, measure-navigation.mjs  Validación de navegación instantánea y medición
 tests/unit, tests/e2e

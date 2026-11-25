@@ -100,6 +100,24 @@ La defensa principal contra XSS sigue siendo React (escapa todo el texto) y que 
 - **En desarrollo** se muestra el error completo.
 - **Next.js** registra por su cuenta los errores no controlados en el servidor (con `digest`). Esos logs no llegan al navegador. Trátalos como datos sensibles en el proveedor: acceso restringido y retención limitada.
 
+### Ambientes y despliegue (fase 15)
+
+- **Separación:** `roxcoach-dev` (Development y Preview) y `roxcoach-prod` (Production) nunca comparten claves, bases, usuarios ni sesiones. La validación detecta proyectos mezclados comparando el *project ref* de la API con el de la base de datos, sin imprimir valores.
+- **Variables de pruebas:** `SUPABASE_SECRET_KEY`, `E2E_*` y las obsoletas `TEST_*` hacen fallar el build y el arranque en cualquier ambiente de Vercel.
+- **Production:** rechaza `DIRECT_URL` (migraciones fuera de Vercel), los orígenes http, `ROXCOACH_CATALOG` y `ROXCOACH_DB_TRACE`.
+- **Caché:**
+  - Las respuestas con sesión son `private, no-store`, así que el CDN de Vercel no las guarda.
+  - Lo que sí se cachea (shells públicos) no lleva cookies ni datos de usuarios.
+  - Las e2e lo verifican (`security.spec.ts` → caché de respuestas).
+- **URL de producción** `https://roxcoach.vercel.app` (sin dominio propio en el piloto):
+  - en Production, `APP_URL` debe ser exactamente `VERCEL_PROJECT_PRODUCTION_URL`, nunca la URL de un deployment o de Preview;
+  - Preview no puede apuntar a producción.
+- **Supabase Auth de producción:**
+  - Site URL `https://roxcoach.vercel.app`.
+  - Redirect URLs **solo** `https://roxcoach.vercel.app/auth/confirm**`. Nunca `*.vercel.app`: es un dominio compartido y un comodín permitiría devolver sesiones a sitios de terceros. Tampoco `localhost`.
+  - En dev, las de Preview se acotan a `roxcoach-git-*-<equipo>.vercel.app`.
+  - La confirmación de correo es obligatoria, también en el piloto con el SMTP integrado: los externos se confirman a mano tras verificar su identidad (`deployment.md` §6.0).
+
 ### Secretos
 
 - `.env*` (salvo `.env.example`), llaves, credenciales, sesiones de prueba, reportes, logs, volcados y respaldos están en `.gitignore`.

@@ -464,6 +464,40 @@ Con Cache Components, Next envía primero el shell con estado 200. Un `notFound(
 
 **Factor de producción:** en desarrollo local cada consulta cuesta ~100 ms porque la base de datos está en otra región. En producción, el servidor de la app debe desplegarse **en la misma región que el proyecto de Supabase** (ver `deployment.md`): es la mayor diferencia de latencia, por encima de cualquier cambio de código.
 
+## Arquitectura de despliegue (fase 15)
+
+```text
+Vercel (región de funciones pdx1 · vercel.json)
+  ├── Development → roxcoach-dev   (local, .env.local)
+  ├── Preview     → roxcoach-dev   (ramas y PR; APP_URL = URL de la rama)
+  └── Production  → roxcoach-prod (main; APP_URL = https://roxcoach.vercel.app)
+
+Supabase (us-west-2)
+  ├── Auth
+  ├── PostgreSQL (pooler 6543 en runtime; sesión 5432 solo para migraciones)
+  ├── RLS
+  └── SMTP externo
+```
+
+- **Configuración por ambiente** (`lib/config/env-rules.ts`):
+  - **`effectiveAppUrl`:**
+    - usa `APP_URL` si está definida;
+    - solo en Preview de Vercel, si falta, usa la URL estable de la rama (`VERCEL_BRANCH_URL`);
+    - Production exige `APP_URL` explícita.
+
+    La usan `publicOrigin()`, `/auth/confirm` y las cabeceras (HSTS/CSP).
+  - **`validateEnv`:**
+    - rechaza las variables de pruebas (`SUPABASE_SECRET_KEY`, `E2E_*`, `TEST_*`) en cualquier ambiente de Vercel;
+    - en Production rechaza `DIRECT_URL`, orígenes http y las herramientas de medición;
+    - compara el *project ref* de `NEXT_PUBLIC_SUPABASE_URL` con el de `DATABASE_URL` y `DIRECT_URL` (no mezclar dev y prod).
+  - **`buildTimeProblems`:** hace fallar el build de Vercel (`scripts/check-build-env.mjs`, que `npm run build` ejecuta antes de `next build`) con un mensaje que solo nombra variables. **`next.config.ts` no debe importar módulos que también usa la app**: en `next dev` provoca un bucle de recargas (comprobado en esta fase); por eso el origen para HSTS/CSP sale de `headersAppUrl` (`lib/security/headers.ts`), que una prueba mantiene idéntico a `effectiveAppUrl`. Los builds locales no se bloquean.
+- **Región:** las funciones y el proxy corren en `pdx1`, junto a Supabase us-west-2. Cada viaje a la base es corto, que es el factor de rendimiento más grande (fase 14).
+- **Caché del CDN:**
+  - Las rutas con sesión responden `private, no-store`.
+  - Los shells públicos (login, registro, offline, 404) se cachean con `s-maxage` y no contienen datos de usuarios.
+  - El service worker se revalida siempre (`no-cache`).
+- **Migraciones:** nunca en el build. Se ejecutan con `prisma migrate deploy` desde una terminal o CI controlado (`docs/deployment.md` §7).
+
 ## Estados de pantalla
 
 Toda pantalla con datos envuelve su contenido en `ScreenStates` (`components/shared/screen-states.tsx`):
