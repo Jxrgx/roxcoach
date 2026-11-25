@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   CalendarDays,
   ChevronRight,
+  History,
   Clock,
   Layers,
   Package,
@@ -21,6 +22,7 @@ import { startAvailability } from "@/lib/execution/progress";
 import { ExecutionStatusBadge } from "@/components/workouts/execution-status";
 import { Badge } from "@/components/ui/badge";
 import { StartSessionButton } from "@/components/athlete/start-session-button";
+import { OverdueBadge } from "@/components/workouts/overdue-badge";
 import { StickyActions } from "@/components/shared/sticky-actions";
 import { Intensity } from "@/components/workouts/intensity";
 
@@ -72,6 +74,11 @@ export function AthleteSessionDetail({
         {session.execution !== "sin_iniciar" && (
           <div className="mt-2">
             <ExecutionStatusBadge status={session.execution} />
+          </div>
+        )}
+        {availability === "atrasada" && (
+          <div className="mt-2">
+            <OverdueBadge />
           </div>
         )}
         {s.focus && <p className="mt-1.5 text-sm text-muted">{s.focus}</p>}
@@ -269,6 +276,16 @@ export function AthleteSessionDetail({
         <StickyActions>
           <StartSessionButton sessionId={session.id} />
         </StickyActions>
+      ) : availability === "atrasada" ? (
+        <>
+          <p role="note" className="mt-6 flex items-start gap-2.5 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm text-ink">
+            <History aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
+            Estaba programada para el {formatKeyLong(session.date).toLowerCase()} y no se comenzó. Aún puedes recuperarla.
+          </p>
+          <StickyActions>
+            <StartSessionButton sessionId={session.id} overdue />
+          </StickyActions>
+        </>
       ) : availability === "futura" ? (
         <p
           role="note"

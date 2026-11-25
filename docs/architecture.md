@@ -227,7 +227,13 @@ Completa la cadena del dominio: **asignación → registro realizado**. Lo plane
 - **RLS:** activo y sin políticas en las 3 tablas.
 
 **Reglas** (`lib/execution/progress.ts`, `lib/db/execution.ts`, `app/atleta/sesiones/actions.ts`, `validateSetLog`, `validateSessionFeedback` y `validateDiscomfort`):
-- **Comenzar:** sesiones de hoy o de días anteriores (en `APP_TIME_ZONE`); no futuras ni canceladas. Es idempotente.
+- **Comenzar (fase 16):** una sola regla, `startAvailability` (`lib/execution/progress.ts`), que usan la interfaz y el servidor (`startExecution`), con la fecha de hoy en `APP_TIME_ZONE`:
+  - **Hoy:** `disponible` → "Comenzar".
+  - **Día anterior sin ejecución:** `atrasada` → insignia "Sesión atrasada" (icono + texto), nota con la fecha original y "Recuperar sesión". La sesión conserva su fecha programada.
+  - **Futura:** `futura` → no se comienza; el servidor la rechaza aunque la pantalla aún ofrezca el botón (p. ej. el coach la movió a mañana).
+  - **Ya iniciada o finalizada:** `iniciada` → "Continuar entrenamiento" o "Ver resumen"; nunca se crea otra ejecución (`session_logs.assignment_id` es único y el inicio es idempotente).
+  - **Cancelada:** no se comienza.
+  - La cola sin conexión y la sincronización no cambian: solo operan sobre una ejecución ya creada.
 - **Registrar:** el objetivo planeado se lee del snapshot en el servidor (no del cliente); el resultado mide lo mismo que el plan (reps, distancia o tiempo), la carga es obligatoria si el plan la tiene y se captura en la unidad del atleta (se guarda en kg). Volver a registrar una serie la corrige (upsert). En pausa no se registra.
 - **Pausa:** se guarda en el servidor; el tiempo activo = (fin, inicio de la pausa abierta o ahora) − inicio − pausas cerradas (`activeSeconds`).
 - **Finalizar:** permitido con series pendientes (confirmación), que quedan como "No realizada". Cierra la pausa abierta.
@@ -235,7 +241,7 @@ Completa la cadena del dominio: **asignación → registro realizado**. Lo plane
 
 **Interfaz:**
 - **Atleta:**
-  - Detalle: "Comenzar" (o "Continuar entrenamiento" / "Ver resumen"); una futura muestra cuándo podrá comenzarla.
+  - Detalle: "Comenzar", "Recuperar sesión" si es atrasada (o "Continuar entrenamiento" / "Ver resumen"); una futura muestra cuándo podrá comenzarla. La Agenda marca las atrasadas con "Atrasada".
   - `/atleta/sesiones/[id]/ejecutar`: nivel 1 cambia según el momento (registrar la serie con "Completar serie" fijo sobre la navegación, descanso con "Siguiente serie", pausa con "Reanudar sesión" o "Finalizar entrenamiento" al terminar). Nivel 2: bloque, progreso, tiempo activo, Pausar y Finalizar. Nivel 3 (panel inferior): ver ejercicio, indicaciones del bloque y reportar molestia. Las series del ejercicio actual permiten volver a una y corregirla.
   - `/atleta/sesiones/[id]/resumen`: tiempo activo, series, RPE general y comentario, molestias y planeado vs. realizado.
   - Inicio, Entrenamiento y Agenda muestran el estado (en curso o completada) y priorizan una sesión que quedó en curso.
@@ -558,3 +564,26 @@ Sin backend, cada estado se previsualiza con `?estado=cargando|vacio|error|sin-c
 - `app/manifest.ts` (standalone, tema oscuro, `lang="es-MX"`) e icono SVG.
 - `viewport-fit=cover` y espaciados `safe-area` para pantallas con notch.
 - Service worker y modo offline: fase posterior.
+
+## Mensajes atleta–coach (fase 16)
+
+Conversación uno a uno entre un atleta y su coach. Sin chat grupal, archivos, audios, notificaciones por correo ni tiempo real.
+
+**Datos** (migración `20261130100000_add_messages`): tabla `messages` (`coach_id`, `athlete_id`, `sender` coach/atleta, `body` 1–2000, `client_id` único, `created_at`, `read_at`).
+- La conversación es el **par** (coach, atleta); no cuelga de `coach_athletes`, así el historial se conserva si la relación se pausa o termina. Borrar una cuenta borra sus mensajes (cascada desde el perfil).
+- Trigger `check_message`: insertar exige relación **activa** y `read_at` nulo; después solo cambia `read_at`, una vez. CHECK de texto. Sin CHECK `read_at >= created_at` (mismo motivo que en los avisos).
+- RLS activo y sin políticas; la función del trigger no es ejecutable por `anon`/`authenticated`.
+
+**Acceso** (`lib/db/messages.ts`; acciones en `app/atleta/mensajes/actions.ts` y `app/coach/mensajes/actions.ts`):
+- **Atleta:** solo la conversación con su coach actual (activo o en pausa) o, si ya no tiene, con el último. El coach se resuelve en el servidor; el cliente nunca envía un id de coach.
+- **Coach:** solo atletas con los que tiene o tuvo relación (`?atleta=<id>`, verificado contra su `coachId`). Un id ajeno muestra "Esta conversación no está disponible".
+- **Escribir:** solo con relación activa (DAL + trigger). En pausa o terminada: historial de solo lectura con el motivo.
+- **Idempotencia:** `client_id` lo genera el dispositivo; reintentar el mismo texto reutiliza el id y no duplica. Un `client_id` de otro par o autor se rechaza sin revelar nada.
+- **Leído:** al verse la conversación (pantalla visible), la app marca como leídos los mensajes **recibidos**.
+
+**Interfaz** (`components/messages/message-thread.tsx`, compartido): enviados a la derecha y recibidos a la izquierda, con hora relativa determinista ("10:05", "Ayer · 10:05", "20 nov · 10:05") y estado "Enviado"/"Leído" o "Nuevo" (texto + icono).
+- El texto se borra solo cuando el servidor confirma.
+- **Sin conexión:** aviso "Enviar un mensaje requiere conexión; tu texto se queda aquí" y botón deshabilitado.
+- **Actualización:** al enviar, al volver a la pestaña o recuperar la red, y cada 30 s mientras está visible.
+- **Atleta:** `/atleta/mensajes`, con enlace "Mensajes" y contador en el encabezado (la barra inferior sigue con 5 pestañas) y "Escribir a mi coach" en Inicio (nivel 3).
+- **Coach:** `/coach/mensajes`: lista con último mensaje y no leídos (todos sus atletas actuales, más los anteriores con historial) y la conversación; en mobile, una vista a la vez.

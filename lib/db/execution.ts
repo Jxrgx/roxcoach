@@ -2,9 +2,10 @@ import "server-only";
 
 import { athleteAssignmentWhere, coachAssignmentWhere } from "@/lib/db/access-rules";
 import { db } from "@/lib/db/prisma";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { effectivePlan, OVERRIDE_SELECT } from "@/lib/db/overrides";
 import type { EffectivePlan } from "@/lib/overrides/apply";
-import type { ExecutionStatus, LoggedSet } from "@/lib/execution/progress";
+import { startAvailability, type ExecutionStatus, type LoggedSet } from "@/lib/execution/progress";
 import type { DiscomfortIntensityValue, DiscomfortZoneValue } from "@/lib/execution/discomfort";
 
 /**
@@ -130,15 +131,31 @@ export async function findAthleteExecution(athleteId: string, sessionId: string)
 
 export type StartResult = { ok: true } | { ok: false; reason: "not-found" | "cancelled" | "future" };
 
-/** Comenzar: crea el registro (idempotente si ya existe). */
+/**
+ * Comenzar o recuperar: crea el registro (idempotente si ya existe). Aplica la
+ * misma regla que la interfaz (startAvailability): hoy y días anteriores sí,
+ * futuras y canceladas no. Una ejecución existente se reutiliza, nunca se duplica
+ * (además, session_logs.assignment_id es único).
+ */
 export async function startExecution(athleteId: string, sessionId: string, today: string): Promise<StartResult> {
   const assignment = await findAssignment(athleteId, sessionId);
   if (!assignment) return { ok: false, reason: "not-found" };
   const existing = await db().sessionLog.findUnique({ where: { assignmentId: assignment.id }, select: { id: true } });
-  if (existing) return { ok: true };
-  if (assignment.session.status !== "programada") return { ok: false, reason: "cancelled" };
-  if (keyOf(assignment.session.scheduledDate) > today) return { ok: false, reason: "future" };
-  await db().sessionLog.upsert({ where: { assignmentId: assignment.id }, create: { assignmentId: assignment.id }, update: {} });
+  const availability = startAvailability({
+    sessionStatus: assignment.session.status === "programada" ? "programada" : "cancelada",
+    date: keyOf(assignment.session.scheduledDate),
+    today,
+    execution: existing ? "en_curso" : "sin_iniciar",
+  });
+  if (availability === "iniciada") return { ok: true };
+  if (availability === "cancelada") return { ok: false, reason: "cancelled" };
+  if (availability === "futura") return { ok: false, reason: "future" };
+  try {
+    await db().sessionLog.create({ data: { assignmentId: assignment.id }, select: { id: true } });
+  } catch (error) {
+    // Dos inicios simultáneos (p. ej. dos pestañas): el otro ya creó la ejecución (assignment_id es único). Se reutiliza.
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) throw error;
+  }
   return { ok: true };
 }
 

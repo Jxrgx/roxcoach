@@ -37,7 +37,7 @@ const groups = [
     role: "atleta",
     state: `${AUTH}/athlete.json`,
     home: "/atleta/inicio",
-    routes: ["/atleta/inicio", "/atleta/agenda", "/atleta/sesiones", "/atleta/progreso", "/atleta/perfil", `/atleta/ejercicios/${SYSTEM_EXERCISE}`],
+    routes: ["/atleta/inicio", "/atleta/agenda", "/atleta/sesiones", "/atleta/progreso", "/atleta/perfil", "/atleta/mensajes", `/atleta/ejercicios/${SYSTEM_EXERCISE}`],
   },
   {
     role: "coach",
@@ -57,7 +57,7 @@ const groups = [
       "/coach/biblioteca/nuevo",
       "/coach/entrenamientos/nueva",
       `/coach/biblioteca/${SYSTEM_EXERCISE}`,
-      ...(ids.athleteId ? [`/coach/atletas/${ids.athleteId}`, `/coach/progreso/${ids.athleteId}`] : []),
+      ...(ids.athleteId ? [`/coach/atletas/${ids.athleteId}`, `/coach/progreso/${ids.athleteId}`, `/coach/mensajes?atleta=${ids.athleteId}`] : []),
     ],
   },
 ];

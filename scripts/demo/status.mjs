@@ -33,11 +33,21 @@ try {
     ["session_logs", manifest.sessionLogs, "assignment_id in (select a.id from assignments a join scheduled_sessions s on s.id = a.session_id where s.coach_id = $2)"],
     ["set_logs", manifest.setLogs, "session_log_id in (select l.id from session_logs l join assignments a on a.id = l.assignment_id join scheduled_sessions s on s.id = a.session_id where s.coach_id = $2)"],
     ["discomfort_reports", manifest.discomforts, "session_log_id in (select l.id from session_logs l join assignments a on a.id = l.assignment_id join scheduled_sessions s on s.id = a.session_id where s.coach_id = $2)"],
+    ["messages", manifest.messages ?? [], "coach_id = $2"],
   ];
   for (const [table, ids, owner] of tables) {
     const n = (await q(`select count(*)::int n from ${table} where id = any($1) and ${owner}`, [ids, coach.id]))[0].n;
     check(n === ids.length, `${table}: ${n}/${ids.length} presentes y del coach`);
   }
+  // Mensajes: del coach con el atleta activo; cuáles están leídos; y ninguno de otro par o coach.
+  const activeId = manifest.athletes.find((a) => a.key === "active")?.id;
+  const msgRows = await q(`select sender::text, read_at is not null as read, athlete_id from messages where id = any($1) order by created_at`, [manifest.messages ?? []]);
+  if ((manifest.messages ?? []).length) {
+    check(msgRows.every((m) => m.athlete_id === activeId), "mensajes demo: todos entre el coach y el atleta activo");
+    console.log(`  mensajes: ${msgRows.map((m) => `${m.sender === "coach" ? "coach" : "atleta"}(${m.read ? "leído" : "sin leer"})`).join(" → ")}`);
+  }
+  const extraMsgs = await q(`select count(*)::int n from messages where (coach_id = $1 and athlete_id = any($2) and not (id = any($3))) or (athlete_id = any($2) and coach_id <> $1)`, [coach.id, athleteIds, manifest.messages ?? []]);
+  console.log(`  mensajes escritos al usar la demo (fuera del manifiesto): ${extraMsgs[0].n}`);
   const relations = await q(`select status::text, count(*)::int n from coach_athletes where id = any($1) group by 1 order by 1`, [manifest.relations]);
   console.log(`  relaciones: ${relations.map((r) => `${r.status}=${r.n}`).join(", ")}`);
   const sources = [...manifest.invitations, ...manifest.assignments, ...manifest.sessionLogs, ...manifest.discomforts];

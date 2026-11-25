@@ -7,6 +7,7 @@ import {
   setSlots,
   slotKey,
   startAvailability,
+  isOverdueSession,
   summarize,
   type LoggedSet,
 } from "@/lib/execution/progress";
@@ -94,12 +95,29 @@ describe("tiempo activo", () => {
 
 describe("comenzar", () => {
   const base = { sessionStatus: "programada" as const, date: "2026-11-24", today: "2026-11-24", execution: "sin_iniciar" as const };
-  it("hoy o días anteriores; no futuras ni canceladas", () => {
+  it("hoy: se comienza normalmente", () => {
     expect(startAvailability(base)).toBe("disponible");
-    expect(startAvailability({ ...base, date: "2026-11-20" })).toBe("disponible");
+    expect(isOverdueSession(base)).toBe(false);
+  });
+  it("pasada sin ejecución: atrasada (se puede recuperar)", () => {
+    expect(startAvailability({ ...base, date: "2026-11-23" })).toBe("atrasada");
+    expect(startAvailability({ ...base, date: "2026-10-01" })).toBe("atrasada");
+    expect(isOverdueSession({ ...base, date: "2026-11-23" })).toBe(true);
+  });
+  it("futura: no se comienza antes de su fecha", () => {
     expect(startAvailability({ ...base, date: "2026-11-25" })).toBe("futura");
-    expect(startAvailability({ ...base, sessionStatus: "cancelada" })).toBe("cancelada");
+    expect(isOverdueSession({ ...base, date: "2026-11-25" })).toBe(false);
+  });
+  it("ya iniciada o finalizada: conserva su ejecución (también si es de un día anterior)", () => {
     expect(startAvailability({ ...base, execution: "en_curso" })).toBe("iniciada");
+    expect(startAvailability({ ...base, execution: "completada" })).toBe("iniciada");
+    expect(startAvailability({ ...base, date: "2026-11-20", execution: "en_curso" })).toBe("iniciada");
+    expect(startAvailability({ ...base, date: "2026-11-20", execution: "completada" })).toBe("iniciada");
+    expect(isOverdueSession({ ...base, date: "2026-11-20", execution: "completada" })).toBe(false);
+  });
+  it("cancelada: no se comienza aunque sea pasada", () => {
+    expect(startAvailability({ ...base, sessionStatus: "cancelada" })).toBe("cancelada");
+    expect(startAvailability({ ...base, sessionStatus: "cancelada", date: "2026-11-20" })).toBe("cancelada");
   });
 });
 

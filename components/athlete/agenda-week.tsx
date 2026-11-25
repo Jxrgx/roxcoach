@@ -4,6 +4,7 @@ import type { WeekDayKey } from "@/lib/scheduling/dates";
 import { cn } from "@/lib/utils/cn";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SessionCard } from "@/components/workouts/session-card";
+import { isOverdueSession } from "@/lib/execution/progress";
 
 /**
  * Agenda semanal del atleta: tira resumen (no interactiva) + lista por día.
@@ -13,9 +14,12 @@ import { SessionCard } from "@/components/workouts/session-card";
 export function AgendaWeek({
   days,
   sessions,
+  today,
 }: {
   days: WeekDayKey[];
   sessions: AthleteSessionDTO[];
+  /** Hoy en la zona de la app: marca las sesiones atrasadas. */
+  today: string;
 }) {
   const byDay = (key: string) => sessions.filter((s) => s.date === key);
 
@@ -105,6 +109,7 @@ export function AgendaWeek({
                             blockCount: s.blockCount,
                             intensity: s.intensity,
                             execution: s.execution,
+                            overdue: isOverdueSession({ sessionStatus: s.status, date: s.date, today, execution: s.execution }),
                           }}
                         />
                       </li>

@@ -14,6 +14,8 @@ import {
   type SportsInfoInput,
 } from "@/lib/validations";
 import { logError } from "@/lib/log";
+import { todayKey } from "@/lib/scheduling/dates";
+import { APP_TIME_ZONE } from "@/lib/utils/format";
 
 /**
  * Acciones del coach sobre sus atletas e invitaciones.
@@ -108,16 +110,18 @@ export async function reactivateAthlete(athleteId: string) {
 export async function saveAthleteSportsInfo(athleteId: string, input: SportsInfoInput): Promise<ActionResult<keyof SportsInfoInput>> {
   const coach = await requireCoach();
   if (!UUID_RE.test(athleteId)) return { ok: false, message: "El atleta no existe." };
+  // Formato aquí; la regla "hoy o posterior" necesita la fecha guardada y se aplica en la transacción.
   const errors = validateSportsInfo(input);
   if (hasErrors(errors)) return { ok: false, errors };
   try {
-    const ok = await updateSportsInfoAsCoach(coach.id, athleteId, {
+    const result = await updateSportsInfoAsCoach(coach.id, athleteId, todayKey(APP_TIME_ZONE), {
       division: input.division || null,
       raceDate: input.raceDate || null,
       availableDays: [...new Set(input.availableDays)],
       equipment: [...new Set(input.equipment)],
     });
-    if (!ok) return { ok: false, message: "Solo puedes editar atletas activos de tu equipo." };
+    if (result === "no-relation") return { ok: false, message: "Solo puedes editar atletas activos de tu equipo." };
+    if (result !== "ok") return { ok: false, errors: { raceDate: result.raceDateError } };
     revalidatePath(`/coach/atletas/${athleteId}`);
     return { ok: true };
   } catch (error) {

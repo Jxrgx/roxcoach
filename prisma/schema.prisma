@@ -70,6 +70,7 @@ model CoachProfile {
   alerts           CoachAlert[]
   overridesCreated AssignmentOverride[] @relation("OverrideCreatedBy")
   overridesUpdated AssignmentOverride[] @relation("OverrideUpdatedBy")
+  messages         Message[]
 
   @@map("coach_profiles")
 }
@@ -89,6 +90,7 @@ model AthleteProfile {
   acceptedInvitations Invitation[]
   assignments         Assignment[]
   alerts              CoachAlert[]
+  messages            Message[]
 
   @@map("athlete_profiles")
 }
@@ -609,4 +611,33 @@ model ExecutionOp {
 
   @@index([sessionLogId])
   @@map("execution_ops")
+}
+
+enum MessageSender {
+  coach
+  athlete
+
+  @@map("message_sender")
+}
+
+/// Mensaje uno a uno entre un atleta y su coach (fase 16). La conversación es el
+/// par (coach, atleta): no depende de coach_athletes, así el historial se
+/// conserva si la relación se pausa o termina. Solo se ESCRIBE con relación
+/// activa (trigger messages_check); solo read_at cambia después de crearse.
+model Message {
+  id         String         @id @default(uuid()) @db.Uuid
+  coachId    String         @map("coach_id") @db.Uuid
+  coach      CoachProfile   @relation(fields: [coachId], references: [profileId], onDelete: Cascade)
+  athleteId  String         @map("athlete_id") @db.Uuid
+  athlete    AthleteProfile @relation(fields: [athleteId], references: [profileId], onDelete: Cascade)
+  sender     MessageSender
+  body       String
+  /// Generado por el dispositivo: un reintento o doble toque no duplica el mensaje.
+  clientId   String         @unique @map("client_id") @db.Uuid
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// Cuándo lo leyó el destinatario (null: sin leer).
+  readAt     DateTime?      @map("read_at") @db.Timestamptz(6)
+
+  @@index([coachId, athleteId, createdAt])
+  @@map("messages")
 }

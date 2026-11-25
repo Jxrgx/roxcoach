@@ -27,12 +27,14 @@ const ROUTES = [
   "/coach/progreso",
   "/coach/avisos",
   "/coach/mensajes",
+  "/coach/mensajes?atleta=:atleta",
   "/coach/configuracion",
   "/atleta/inicio",
   "/atleta/agenda",
   "/atleta/sesiones",
   "/atleta/progreso",
   "/atleta/perfil",
+  "/atleta/mensajes",
   "/atleta/ejercicios/:sistema",
   "/componentes",
 ];
@@ -77,7 +79,7 @@ for (const vp of VIEWPORTS) {
         expect(await smallTargets(page), "áreas táctiles ≥ 44 px").toEqual([]);
 
         await page.screenshot({
-          path: `test-results/screens/${vp.name}/${route === "/" ? "home" : route.slice(1).replaceAll("/", "_").replace(":", "")}.png`,
+          path: `test-results/screens/${vp.name}/${route === "/" ? "home" : route.slice(1).replaceAll("/", "_").replace(":", "").replace(/[?=]/g, "_")}.png`,
           fullPage: true,
         });
         expect(errors, "sin errores de consola").toEqual([]);
@@ -91,7 +93,12 @@ test.describe("estados de pantalla (360px)", () => {
   test.use({ viewport: { width: 360, height: 780 } });
 
   // Pantallas con datos dinámicos (los formularios de alta no muestran estados de lista).
-  const DATA_ROUTES = ROUTES.filter((r) => (r.startsWith("/coach/") || r.startsWith("/atleta/")) && !r.endsWith("/nuevo") && !r.endsWith("/nueva"));
+  // Sin rutas con query (`?estado=` se agrega a la ruta base) ni Mensajes: su conversación es un
+  // componente con estado (borrador, envío, leído) que no se puede duplicar como fallback de
+  // ScreenStates. Sus estados reales (carga, vacío, solo lectura, sin conexión) los cubre messages.spec.ts.
+  const DATA_ROUTES = ROUTES.filter(
+    (r) => (r.startsWith("/coach/") || r.startsWith("/atleta/")) && !r.endsWith("/nuevo") && !r.endsWith("/nueva") && !r.includes("?") && !r.endsWith("/mensajes"),
+  );
   const STATES: Array<[string, RegExp]> = [
     ["cargando", /Cargando/],
     ["vacio", /./],

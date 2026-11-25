@@ -6,8 +6,11 @@ import { startSessionAction } from "@/app/atleta/sesiones/actions";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 
-/** "Comenzar": crea el registro de la ejecución y abre la serie activa. */
-export function StartSessionButton({ sessionId }: { sessionId: string }) {
+/**
+ * "Comenzar" (o "Recuperar sesión" si es atrasada): crea el registro de la
+ * ejecución y abre la serie activa. El servidor vuelve a validar la regla.
+ */
+export function StartSessionButton({ sessionId, overdue = false }: { sessionId: string; overdue?: boolean }) {
   const [pending, startTransition] = useTransition();
   const toast = useToast();
   return (
@@ -17,16 +20,17 @@ export function StartSessionButton({ sessionId }: { sessionId: string }) {
       className="sm:w-auto"
       icon={<Play aria-hidden className="size-5" />}
       loading={pending}
-      loadingLabel="Comenzando…"
+      loadingLabel={overdue ? "Recuperando…" : "Comenzando…"}
       onClick={() =>
         startTransition(async () => {
           // Si todo sale bien, la acción redirige a la ejecución.
           const result = await startSessionAction(sessionId);
-          if (!result.ok) toast.show({ tone: "error", title: "No se pudo comenzar", description: result.message });
+          if (!result.ok)
+            toast.show({ tone: "error", title: overdue ? "No se pudo recuperar" : "No se pudo comenzar", description: result.message });
         })
       }
     >
-      Comenzar
+      {overdue ? "Recuperar sesión" : "Comenzar"}
     </Button>
   );
 }

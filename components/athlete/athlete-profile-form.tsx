@@ -11,6 +11,8 @@ import { useToast } from "@/components/ui/toast";
 import { StickyActions } from "@/components/shared/sticky-actions";
 import { SportsInfoFields } from "@/components/athlete/sports-info-fields";
 import { FormSection } from "@/components/ui/form-controls";
+import { todayKey } from "@/lib/scheduling/dates";
+import { APP_TIME_ZONE } from "@/lib/utils/format";
 
 export function AthleteProfileForm({ profile }: { profile: AthleteProfileDTO }) {
   const [values, setValues] = useState<AthleteProfileInput>({
@@ -21,6 +23,8 @@ export function AthleteProfileForm({ profile }: { profile: AthleteProfileDTO }) 
     equipment: profile.equipment,
     weightUnit: profile.weightUnit,
   });
+  // Fecha ya guardada: una fecha pasada guardada antes se conserva (raceDateRuleError).
+  const [savedRaceDate, setSavedRaceDate] = useState(profile.raceDate);
   const [errors, setErrors] = useState<FieldErrors<keyof AthleteProfileInput>>({});
   const [phase, setPhase] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const toast = useToast();
@@ -37,7 +41,7 @@ export function AthleteProfileForm({ profile }: { profile: AthleteProfileDTO }) 
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const found = validateAthleteProfile(values);
+    const found = validateAthleteProfile(values, { today: todayKey(APP_TIME_ZONE), savedRaceDate });
     setErrors(found);
     if (hasErrors(found)) return;
     setPhase("saving");
@@ -48,6 +52,7 @@ export function AthleteProfileForm({ profile }: { profile: AthleteProfileDTO }) 
       toast.show({ tone: "error", title: "No se guardó tu perfil", description: result.message ?? "Revisa los campos marcados." });
       return;
     }
+    setSavedRaceDate(values.raceDate);
     setPhase("saved");
     toast.show({ tone: "success", title: "Perfil actualizado" });
   }

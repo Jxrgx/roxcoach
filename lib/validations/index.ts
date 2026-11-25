@@ -241,11 +241,34 @@ export interface SportsInfoInput {
   equipment: string[];
 }
 
-export function validateSportsInfo(input: SportsInfoInput): FieldErrors<keyof SportsInfoInput> {
+/**
+ * La fecha de competencia es opcional. Si se captura o se cambia, debe ser hoy o
+ * posterior (zona de la app). Una fecha pasada que ya estaba guardada se
+ * conserva al editar otros campos: no obliga a borrarla.
+ */
+export function raceDateRuleError(raceDate: string, savedRaceDate: string, today: string): string | undefined {
+  if (!raceDate) return undefined;
+  if (!isValidIsoDate(raceDate)) return "Revisa la fecha de competencia.";
+  if (raceDate !== savedRaceDate && raceDate < today) return "La fecha de competencia debe ser hoy o posterior.";
+  return undefined;
+}
+
+/** Contexto de la regla de fecha: hoy y la fecha guardada (sin él solo se valida el formato). */
+export interface RaceDateContext {
+  today: string;
+  savedRaceDate: string;
+}
+
+export function validateSportsInfo(input: SportsInfoInput, raceContext?: RaceDateContext): FieldErrors<keyof SportsInfoInput> {
   const errors: FieldErrors<keyof SportsInfoInput> = {};
   if (input.division && !(HYROX_DIVISIONS as readonly string[]).includes(input.division))
     errors.division = "Elige una división HYROX válida.";
-  if (input.raceDate && !isValidIsoDate(input.raceDate)) errors.raceDate = "Revisa la fecha de competencia.";
+  const raceError = raceContext
+    ? raceDateRuleError(input.raceDate, raceContext.savedRaceDate, raceContext.today)
+    : input.raceDate && !isValidIsoDate(input.raceDate)
+      ? "Revisa la fecha de competencia."
+      : undefined;
+  if (raceError) errors.raceDate = raceError;
   if (input.availableDays.some((d) => !(WEEKDAYS as readonly string[]).includes(d)))
     errors.availableDays = "Hay un día no válido.";
   if (input.equipment.some((e) => !(EQUIPMENT_OPTIONS as readonly string[]).includes(e)))
@@ -253,8 +276,8 @@ export function validateSportsInfo(input: SportsInfoInput): FieldErrors<keyof Sp
   return errors;
 }
 
-export function validateAthleteProfile(input: AthleteProfileInput): FieldErrors<keyof AthleteProfileInput> {
-  const errors: FieldErrors<keyof AthleteProfileInput> = { ...validateSportsInfo(input) };
+export function validateAthleteProfile(input: AthleteProfileInput, raceContext?: RaceDateContext): FieldErrors<keyof AthleteProfileInput> {
+  const errors: FieldErrors<keyof AthleteProfileInput> = { ...validateSportsInfo(input, raceContext) };
   if (input.name.trim().length < 2) errors.name = "Escribe tu nombre.";
   else if (input.name.trim().length > 80) errors.name = "Usa máximo 80 caracteres.";
   if (!(WEIGHT_UNITS as readonly string[]).includes(input.weightUnit)) errors.weightUnit = "Elige kilogramos o libras.";

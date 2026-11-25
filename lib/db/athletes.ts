@@ -3,6 +3,7 @@ import "server-only";
 import { coachAthleteWhere } from "@/lib/db/access-rules";
 import { db } from "@/lib/db/prisma";
 import type { RelationStatus } from "@/lib/invitations/rules";
+import { raceDateRuleError } from "@/lib/validations";
 
 /**
  * Relación coach–atleta. TODAS las consultas del coach filtran por su coachId:
@@ -113,15 +114,25 @@ export async function setRelationStatus(
   return result.count === 1;
 }
 
-/** El coach actualiza la información deportiva; exige relación ACTIVA con él. */
+/**
+ * El coach actualiza la información deportiva; exige relación ACTIVA con él.
+ * La regla de la fecha de competencia se evalúa contra la fecha guardada,
+ * después de comprobar la relación (no revela datos de atletas ajenos).
+ */
 export async function updateSportsInfoAsCoach(
   coachId: string,
   athleteId: string,
+  today: string,
   data: { division: string | null; raceDate: string | null; availableDays: string[]; equipment: string[] },
-): Promise<boolean> {
+): Promise<"ok" | "no-relation" | { raceDateError: string }> {
   return db().$transaction(async (tx) => {
-    const relation = await tx.coachAthlete.findFirst({ where: { coachId, athleteId, status: "active" }, select: { id: true } });
-    if (!relation) return false;
+    const relation = await tx.coachAthlete.findFirst({
+      where: { coachId, athleteId, status: "active" },
+      select: { athlete: { select: { raceDate: true } } },
+    });
+    if (!relation) return "no-relation";
+    const raceDateError = raceDateRuleError(data.raceDate ?? "", dateKey(relation.athlete.raceDate), today);
+    if (raceDateError) return { raceDateError };
     await tx.athleteProfile.update({
       where: { profileId: athleteId },
       data: {
@@ -131,6 +142,6 @@ export async function updateSportsInfoAsCoach(
         equipment: data.equipment,
       },
     });
-    return true;
+    return "ok";
   });
 }

@@ -102,10 +102,10 @@ async function insertSession(title: string, athleteId: string, opts: { date?: st
   return s!.id;
 }
 
-/** Abre la sesión y la comienza desde el detalle (espera la hidratación). */
+/** Abre la sesión y la comienza (o la recupera, si es atrasada) desde el detalle (espera la hidratación). */
 async function start(page: Page, sessionId: string) {
   await page.goto(`/atleta/sesiones/${sessionId}`, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Comenzar" }).filter({ visible: true }).click();
+  await page.getByRole("button", { name: /^(Comenzar|Recuperar sesión)$/ }).filter({ visible: true }).click();
   await expect(page).toHaveURL(new RegExp(`/atleta/sesiones/${sessionId}/ejecutar$`));
   await page.waitForLoadState("networkidle");
 }
@@ -335,6 +335,70 @@ test.describe("ejecución del atleta", () => {
         [late],
       ),
     ).rejects.toThrow(/no existe/);
+  });
+
+  test("inicio por fecha: hoy, atrasada (recuperar), futura validada en servidor, iniciada y finalizada sin duplicar", async ({ browser }) => {
+    test.slow();
+    const athlete = await newAthlete(browser, `Atleta Fechas ${Math.random().toString(36).slice(2, 6)}`);
+    const { page } = athlete;
+    const todays = await insertSession(uniqueName("Hoy"), athlete.id);
+    const late = await insertSession(uniqueName("Atrasada"), athlete.id, { date: today(-1) });
+    const moved = await insertSession(uniqueName("Movida"), athlete.id);
+    const finished = await insertSession(uniqueName("Terminada"), athlete.id, { date: today(-3) });
+    const logsOf = async (sessionId: string) =>
+      (await dbQuery<{ n: number }>(`select count(*)::int n from session_logs l join assignments a on a.id = l.assignment_id where a.session_id = $1`, [sessionId]))[0]!.n;
+    const urlOf = (id: string, suffix = "") => new RegExp(`/atleta/sesiones/${id}${suffix}$`);
+
+    // Hoy: "Comenzar", sin marca de atrasada. Dos pestañas pulsan a la vez: una sola ejecución.
+    const second = await athlete.ctx.newPage();
+    for (const p of [page, second]) await p.goto(`/atleta/sesiones/${todays}`, { waitUntil: "networkidle" });
+    await expect(page.getByText("Sesión atrasada")).toHaveCount(0);
+    await Promise.all([page, second].map((p) => p.getByRole("button", { name: "Comenzar" }).filter({ visible: true }).click()));
+    await expect(page).toHaveURL(urlOf(todays, "/ejecutar"));
+    await expect(second).toHaveURL(urlOf(todays, "/ejecutar"));
+    await second.close();
+    expect(await logsOf(todays)).toBe(1);
+
+    // Pasada sin ejecución: "Sesión atrasada" + "Recuperar sesión" (nunca "Comenzar").
+    await page.goto(`/atleta/sesiones/${late}`, { waitUntil: "networkidle" });
+    await expect(page.getByText("Sesión atrasada").filter({ visible: true })).toBeVisible();
+    await expect(page.getByText(/Estaba programada para el .* y no se comenzó/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Comenzar" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Recuperar sesión" }).filter({ visible: true }).click();
+    await expect(page).toHaveURL(urlOf(late, "/ejecutar"));
+    await expect(logger(page)).toBeVisible();
+
+    // Ya iniciada: el detalle ofrece continuar (ya no es atrasada) y no crea otra ejecución.
+    await page.goto(`/atleta/sesiones/${late}`, { waitUntil: "networkidle" });
+    await expect(page.getByRole("link", { name: "Continuar entrenamiento" }).filter({ visible: true })).toBeVisible();
+    await expect(page.getByText("Sesión atrasada")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^(Comenzar|Recuperar sesión)$/ })).toHaveCount(0);
+    expect(await logsOf(late)).toBe(1);
+
+    // Futura, validada por el SERVIDOR: la pantalla se abrió cuando era de hoy y el coach
+    // la movió a mañana antes de pulsar. La interfaz aún ofrece "Comenzar"; el servidor la rechaza.
+    await page.goto(`/atleta/sesiones/${moved}`, { waitUntil: "networkidle" });
+    await dbQuery(`update scheduled_sessions set scheduled_date = $2 where id = $1`, [moved, today(1)]);
+    await page.getByRole("button", { name: "Comenzar" }).filter({ visible: true }).click();
+    await expect(page.getByText("Podrás comenzarla el día programado.")).toBeVisible();
+    await expect(page).toHaveURL(urlOf(moved));
+    expect(await logsOf(moved)).toBe(0);
+    await page.goto(`/atleta/sesiones/${moved}`);
+    await expect(page.getByText(/Podrás comenzarla el/).filter({ visible: true })).toBeVisible();
+
+    // Finalizada (de un día anterior): "Ver resumen"; ni atrasada ni otra ejecución.
+    const [assignment] = await dbQuery<{ id: string }>(`select id from assignments where session_id = $1`, [finished]);
+    const [log] = await dbQuery<{ id: string }>(
+      `insert into session_logs (id, assignment_id, status, started_at) values (gen_random_uuid(), $1, 'en_curso', now() - interval '1 hour') returning id`,
+      [assignment!.id],
+    );
+    await dbQuery(`update session_logs set status = 'completada', finished_at = now() where id = $1`, [log!.id]);
+    await page.goto(`/atleta/sesiones/${finished}`, { waitUntil: "networkidle" });
+    await expect(page.getByRole("link", { name: "Ver resumen" }).filter({ visible: true })).toBeVisible();
+    await expect(page.getByText("Sesión atrasada")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^(Comenzar|Recuperar sesión)$/ })).toHaveCount(0);
+    expect(await logsOf(finished)).toBe(1);
+    await athlete.ctx.close();
   });
 
   for (const vp of [

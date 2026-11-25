@@ -85,7 +85,7 @@ function BottomNavActive() {
  * Shell del atleta: pensado para una mano. En mobile la navegación vive
  * abajo (zona del pulgar); desde tablet pasa a una barra superior.
  */
-export function AthleteShell({ children }: { children: ReactNode }) {
+export function AthleteShell({ children, headerAction }: { children: ReactNode; headerAction?: ReactNode }) {
   return (
     <>
       <a
@@ -100,11 +100,15 @@ export function AthleteShell({ children }: { children: ReactNode }) {
           <Link href="/atleta/inicio" aria-label="RoxCoach, ir a inicio" className="inline-flex min-h-11 items-center">
             <Logo />
           </Link>
-          <nav aria-label="Navegación principal" className="hidden md:block">
-            <Suspense fallback={<TopNavList pathname="" />}>
-              <TopNavActive />
-            </Suspense>
-          </nav>
+          <div className="flex items-center gap-2">
+            <nav aria-label="Navegación principal" className="hidden md:block">
+              <Suspense fallback={<TopNavList pathname="" />}>
+                <TopNavActive />
+              </Suspense>
+            </nav>
+            {/* Mensajes con el coach: fuera de la barra inferior (5 pestañas), visible en todos los tamaños. */}
+            {headerAction}
+          </div>
         </div>
       </header>
 

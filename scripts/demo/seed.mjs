@@ -14,6 +14,8 @@
 // - Los avisos NO se insertan: los genera la propia app (sus reglas y deduplicación)
 //   cuando el coach abre el panel.
 // - No envía correos: las cuentas se crean confirmadas con la API de administración.
+// - Mensajes: una conversación corta coach–atleta activo, por ids exactos en el manifiesto
+//   (se crean solo con el resto del dataset; si ya existe, el seed se detiene).
 
 import { randomBytes, createHash } from "node:crypto";
 import { adminClient, assertTargetProject, dayKey, fail, findCoach, loadEnv, localInstant, mask, MANIFEST_PATH, pgClient, readManifest, writeManifest } from "./common.mjs";
@@ -124,6 +126,19 @@ const OVERRIDES = [
   { session: "today", athlete: "active", block: 2, exercise: 0, reps: 15, note: "DEMO — 15 repeticiones por serie en lugar de 20." },
 ];
 
+// Conversación demo (fase 16) entre el coach y el atleta activo, la noche de su sesión
+// completada (hist3, día -13). Los dos primeros quedan leídos; el último del coach,
+// sin leer (el atleta ve "Nuevo" y el contador del encabezado).
+const MESSAGES = {
+  athlete: "active",
+  day: -13,
+  items: [
+    { sender: "coach", at: [20, 0], readAt: [20, 20], body: "Hola, ¿cómo te sentiste con la sesión de hoy?" },
+    { sender: "athlete", at: [20, 25], readAt: [20, 38], body: "Me sentí bien. El sled push estuvo pesado, pero pude completar todas las series." },
+    { sender: "coach", at: [20, 40], readAt: null, body: "Perfecto. Mantén ese ritmo y avísame si aparece alguna molestia." },
+  ],
+};
+
 // ---------- Ejecución ----------
 const tag = `ROXCOACH_DEMO_${new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14)}`;
 const client = pgClient();
@@ -145,7 +160,7 @@ try {
     if (a.email === coach.email.toLowerCase()) fail("Un atleta demo no puede usar el correo del coach.");
   }
 
-  const manifest = { tag, status: "parcial", createdAt: new Date().toISOString(), coach: { id: coach.id, maskedEmail: coach.maskedEmail }, athletes: [], invitations: [], relations: [], templates: [], sessions: [], assignments: [], overrides: [], sessionLogs: [], setLogs: [], discomforts: [] };
+  const manifest = { tag, status: "parcial", createdAt: new Date().toISOString(), coach: { id: coach.id, maskedEmail: coach.maskedEmail }, athletes: [], invitations: [], relations: [], templates: [], sessions: [], assignments: [], overrides: [], sessionLogs: [], setLogs: [], discomforts: [], messages: [] };
 
   // 1) Cuentas Auth (fuera de la transacción). Se registran en el manifiesto al instante.
   const admin = adminClient();
@@ -281,6 +296,20 @@ try {
     }
   }
 
+  // Mensajes (relación activa, como exige el trigger messages_check; read_at se fija después).
+  {
+    const a = athlete[MESSAGES.athlete];
+    const key = dayKey(MESSAGES.day);
+    for (const m of MESSAGES.items) {
+      const [msg] = await q(
+        `insert into messages (id, coach_id, athlete_id, sender, body, client_id, created_at) values (gen_random_uuid(), $1, $2, $3, $4, gen_random_uuid(), $5) returning id`,
+        [coach.id, a.id, m.sender, m.body, localInstant(key, ...m.at)],
+      );
+      manifest.messages.push(msg.id);
+      if (m.readAt) await q(`update messages set read_at = $2 where id = $1`, [msg.id, localInstant(key, ...m.readAt)]);
+    }
+  }
+
   // Estados finales: sesión cancelada y relación en pausa (después de asignar su historial).
   for (const s of SESSIONS.filter((x) => x.cancel)) await q(`update scheduled_sessions set status = 'cancelada', cancelled_at = now() where id = $1`, [s.id]);
   for (const a of ATHLETES.filter((x) => x.pausedAgo)) await q(`update coach_athletes set status = 'paused', paused_at = $2 where id = $1`, [a.relationId, localInstant(dayKey(-a.pausedAgo), 9)]);
@@ -288,6 +317,8 @@ try {
   // Verificación dentro de la transacción: todo pertenece al coach y nada más cambió de dueño.
   const own = await q(`select count(*)::int n from scheduled_sessions where id = any($1) and coach_id = $2`, [manifest.sessions, coach.id]);
   if (own[0].n !== manifest.sessions.length) throw new Error("Las sesiones creadas no pertenecen todas al coach.");
+  const ownMessages = await q(`select count(*)::int n from messages where id = any($1) and coach_id = $2 and athlete_id = $3`, [manifest.messages, coach.id, athlete[MESSAGES.athlete].id]);
+  if (ownMessages[0].n !== MESSAGES.items.length) throw new Error("Los mensajes creados no corresponden al coach y al atleta activo.");
   const cross = await q(`select count(*)::int n from coach_athletes where athlete_id = any($1) and coach_id <> $2`, [ATHLETES.map((a) => a.id), coach.id]);
   if (cross[0].n !== 0) throw new Error("Se detectaron relaciones cruzadas.");
 
@@ -298,7 +329,7 @@ try {
   console.log(`\n✓ Dataset ${tag} creado (manifiesto: ${MANIFEST_PATH}).`);
   for (const a of manifest.athletes) console.log(`  atleta ${a.key.padEnd(8)} ${a.name.padEnd(22)} ${a.maskedEmail}  ${a.id}`);
   console.log(
-    `  plantillas ${manifest.templates.length} · sesiones ${manifest.sessions.length} · asignaciones ${manifest.assignments.length} · personalizaciones ${manifest.overrides.length} · ejecuciones ${manifest.sessionLogs.length} · series ${manifest.setLogs.length} · molestias ${manifest.discomforts.length} · invitaciones ${manifest.invitations.length}`,
+    `  plantillas ${manifest.templates.length} · sesiones ${manifest.sessions.length} · asignaciones ${manifest.assignments.length} · personalizaciones ${manifest.overrides.length} · ejecuciones ${manifest.sessionLogs.length} · series ${manifest.setLogs.length} · molestias ${manifest.discomforts.length} · invitaciones ${manifest.invitations.length} · mensajes ${manifest.messages.length}`,
   );
   console.log("  Avisos: los genera la app al abrir el panel del coach (RPE alto, molestia, sesión no iniciada, nuevos atletas).");
 } catch (error) {

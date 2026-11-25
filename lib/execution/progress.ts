@@ -98,16 +98,33 @@ export function closedPauseSeconds(pausedAt: Date | null, now: Date): number {
   return pausedAt ? Math.max(0, Math.round((now.getTime() - pausedAt.getTime()) / 1000)) : 0;
 }
 
-/** Comenzar: sesión programada, asignada y de hoy o de días anteriores. */
+export type StartAvailability = "disponible" | "atrasada" | "futura" | "cancelada" | "iniciada";
+
+/**
+ * Regla única para comenzar una sesión (la usan la interfaz y el servidor):
+ * - ya tiene ejecución (en curso o completada) → "iniciada": se continúa o se
+ *   ve el resumen; nunca se crea otra ejecución;
+ * - cancelada → no se comienza;
+ * - de hoy → "disponible";
+ * - de un día anterior sin ejecución → "atrasada": se puede recuperar;
+ * - de un día futuro → "futura": no se comienza antes de su fecha.
+ * `today` es la fecha de hoy en la zona de la app (YYYY-MM-DD).
+ */
 export function startAvailability(input: {
   sessionStatus: "programada" | "cancelada";
   date: string;
   today: string;
   execution: ExecutionStatus;
-}): "disponible" | "futura" | "cancelada" | "iniciada" {
+}): StartAvailability {
   if (input.execution !== "sin_iniciar") return "iniciada";
   if (input.sessionStatus === "cancelada") return "cancelada";
-  return input.date > input.today ? "futura" : "disponible";
+  if (input.date > input.today) return "futura";
+  return input.date < input.today ? "atrasada" : "disponible";
+}
+
+/** Sesión programada de un día anterior que nunca se comenzó. */
+export function isOverdueSession(input: Parameters<typeof startAvailability>[0]): boolean {
+  return startAvailability(input) === "atrasada";
 }
 
 export interface ExerciseSummary {

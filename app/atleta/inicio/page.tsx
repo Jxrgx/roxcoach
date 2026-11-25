@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
-import { CalendarCheck, Clock, Layers, PauseCircle, Play } from "lucide-react";
+import { CalendarCheck, ChevronRight, Clock, Layers, MessageSquare, PauseCircle, Play } from "lucide-react";
 import { requireAthlete } from "@/lib/auth/session";
 import { findAthleteCoach } from "@/lib/db/athletes";
 import { findInProgressAthleteSession, listAthleteSessions, listUpcomingAthleteSessions } from "@/lib/db/sessions";
@@ -183,6 +183,24 @@ async function HomeContent() {
             {weekScheduled === 1 ? "sesión programada" : "sesiones programadas"} esta semana.
           </p>
         </section>
+
+        {/* Nivel 3: contacto con el coach (no compite con el entrenamiento de hoy). */}
+        {coach && (
+          <section aria-labelledby="mi-coach" className="mt-8">
+            <SectionHeader id="mi-coach" title="Tu coach" />
+            <Link
+              href="/atleta/mensajes"
+              className="flex min-h-11 items-center gap-3 rounded-2xl border border-line bg-surface p-4 text-sm transition-colors hover:border-muted/50"
+            >
+              <MessageSquare aria-hidden className="size-5 shrink-0 text-muted" />
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold text-ink">{coach.status === "active" ? "Escribir a mi coach" : "Ver mensajes"}</span>
+                <span className="block truncate text-muted">{coach.coachName}</span>
+              </span>
+              <ChevronRight aria-hidden className="size-5 shrink-0 text-muted" />
+            </Link>
+          </section>
+        )}
       </ScreenStates>
     </>
   );

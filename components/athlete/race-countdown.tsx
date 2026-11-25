@@ -1,20 +1,23 @@
 "use client";
 
-import Link from "next/link";
-import { Flag } from "lucide-react";
+import { Flag, Repeat } from "lucide-react";
 import { daysUntil } from "@/lib/utils/format";
 import { useToday } from "@/lib/utils/use-today";
 
-/** "Faltan N días para tu carrera", calculado con la fecha del dispositivo. */
+/**
+ * "Faltan N días para tu carrera", calculado con la fecha del dispositivo.
+ * La fecha de competencia es opcional: sin ella no hay cuenta regresiva y se
+ * muestra "Entrenamiento continuo" (estado neutro, no un pendiente).
+ */
 export function RaceCountdown({ raceDate }: { raceDate: string }) {
   const today = useToday();
 
   if (!raceDate) {
     return (
-      <Link href="/atleta/perfil" className="mt-1 inline-flex min-h-11 items-center gap-1.5 text-sm text-electric hover:underline">
-        <Flag aria-hidden className="size-4" />
-        Agrega la fecha de tu carrera
-      </Link>
+      <p className="mt-1.5 inline-flex min-h-6 items-center gap-1.5 text-sm text-muted">
+        <Repeat aria-hidden className="size-4" />
+        Entrenamiento continuo
+      </p>
     );
   }
 

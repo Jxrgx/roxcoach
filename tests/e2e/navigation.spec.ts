@@ -38,6 +38,7 @@ const ATHLETE = [
   { href: "/atleta/perfil", title: "Perfil" },
   { href: "/atleta/progreso", title: "Progreso" },
   { href: "/atleta/agenda", title: "Agenda" },
+  { href: "/atleta/mensajes", title: "Mensajes" },
 ];
 const COACH = [
   { href: "/coach/atletas", title: "Atletas" },

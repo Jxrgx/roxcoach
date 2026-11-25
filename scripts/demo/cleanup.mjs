@@ -73,13 +73,17 @@ try {
   note("series", manifest.setLogs, sets);
   const discomforts = ids(await q(`select id from discomfort_reports where session_log_id = any($1)`, [logs]));
   note("molestias", manifest.discomforts, discomforts);
-  const ops = ids(await q(`select id from execution_ops where session_log_id = any($1)`, [logs]));
+  // execution_ops usa op_id como llave (no id).
+  const ops = ids(await q(`select op_id as id from execution_ops where session_log_id = any($1)`, [logs]));
   const invitations = ids(await q(`select id from invitations where id = any($1) and coach_id = $2`, [manifest.invitations, coach.id]));
   note("invitaciones", manifest.invitations, invitations);
   const relations = ids(await q(`select id from coach_athletes where coach_id = $1 and athlete_id = any($2)`, [coach.id, tagged]));
   note("relaciones", manifest.relations, relations);
   const templates = ids(await q(`select id from workout_templates where id = any($1) and coach_id = $2`, [manifest.templates, coach.id]));
   note("plantillas", manifest.templates, templates);
+  // Mensajes del coach con los atletas demo (los del manifiesto y los escritos al usar la demo).
+  const messages = ids(await q(`select id from messages where coach_id = $1 and athlete_id = any($2)`, [coach.id, tagged]));
+  note("mensajes", manifest.messages ?? [], messages);
   const sources = [...invitations, ...assignments, ...logs, ...discomforts];
   const alerts = ids(await q(`select id from coach_alerts where coach_id = $1 and (athlete_id = any($2) or source_id = any($3))`, [coach.id, tagged, sources]));
   const foreignAlerts = await q(`select count(*)::int n from coach_alerts where coach_id <> $1 and (athlete_id = any($2) or source_id = any($3))`, [coach.id, tagged, sources]);
@@ -90,13 +94,13 @@ try {
   }
 
   // Borrado en orden, cada paso con su cantidad exacta.
-  const del = async (label, table, list) => {
+  const del = async (label, table, list, key = "id") => {
     if (list.length === 0) return report.push(`${label}: 0`);
-    const res = await client.query(`delete from ${table} where id = any($1)`, [list]);
+    const res = await client.query(`delete from ${table} where ${key} = any($1)`, [list]);
     if (res.rowCount !== list.length) throw new Error(`${label}: se esperaban ${list.length} filas y se afectaron ${res.rowCount}. Se revierte.`);
     report.push(`${label}: ${res.rowCount}`);
   };
-  await del("operaciones offline", "execution_ops", ops);
+  await del("operaciones offline", "execution_ops", ops, "op_id");
   await del("series", "set_logs", sets);
   await del("molestias", "discomfort_reports", discomforts);
   await del("ejecuciones", "session_logs", logs);
@@ -105,6 +109,7 @@ try {
   await del("asignaciones", "assignments", assignments);
   await del("sesiones", "scheduled_sessions", sessions);
   await del("invitaciones", "invitations", invitations);
+  await del("mensajes", "messages", messages);
   await del("relaciones", "coach_athletes", relations);
   await del("plantillas (con bloques y ejercicios)", "workout_templates", templates);
   // Usuarios Auth demo: por id y etiqueta exacta (cascada: perfil y perfil de atleta).

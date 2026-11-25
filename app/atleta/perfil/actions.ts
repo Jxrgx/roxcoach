@@ -5,11 +5,13 @@ import { requireAthlete } from "@/lib/auth/session";
 import { updateAthleteProfile } from "@/lib/db/profiles";
 import { hasErrors, validateAthleteProfile, type ActionResult, type AthleteProfileInput } from "@/lib/validations";
 import { logError } from "@/lib/log";
+import { todayKey } from "@/lib/scheduling/dates";
+import { APP_TIME_ZONE } from "@/lib/utils/format";
 
 /** Guarda el perfil del atleta autenticado (validación repetida en servidor). */
 export async function saveAthleteProfile(input: AthleteProfileInput): Promise<ActionResult<keyof AthleteProfileInput>> {
   const athlete = await requireAthlete();
-  const errors = validateAthleteProfile(input);
+  const errors = validateAthleteProfile(input, { today: todayKey(APP_TIME_ZONE), savedRaceDate: athlete.raceDate });
   if (hasErrors(errors)) return { ok: false, errors };
 
   try {

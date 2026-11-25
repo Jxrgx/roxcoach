@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { StickyActions } from "@/components/shared/sticky-actions";
 import { SportsInfoFields } from "@/components/athlete/sports-info-fields";
+import { todayKey } from "@/lib/scheduling/dates";
+import { APP_TIME_ZONE } from "@/lib/utils/format";
 
 /**
  * El coach edita la información deportiva de su atleta (misma validación que
@@ -15,6 +17,7 @@ import { SportsInfoFields } from "@/components/athlete/sports-info-fields";
  */
 export function AthleteSportsForm({ athleteId, initial, editable }: { athleteId: string; initial: SportsInfoInput; editable: boolean }) {
   const [values, setValues] = useState<SportsInfoInput>(initial);
+  const [savedRaceDate, setSavedRaceDate] = useState(initial.raceDate);
   const [errors, setErrors] = useState<FieldErrors<keyof SportsInfoInput>>({});
   const [phase, setPhase] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const toast = useToast();
@@ -26,7 +29,7 @@ export function AthleteSportsForm({ athleteId, initial, editable }: { athleteId:
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const found = validateSportsInfo(values);
+    const found = validateSportsInfo(values, { today: todayKey(APP_TIME_ZONE), savedRaceDate });
     setErrors(found);
     if (hasErrors(found)) return;
     setPhase("saving");
@@ -37,6 +40,7 @@ export function AthleteSportsForm({ athleteId, initial, editable }: { athleteId:
       toast.show({ tone: "error", title: "No se guardaron los cambios", description: result.message ?? "Revisa los campos marcados." });
       return;
     }
+    setSavedRaceDate(values.raceDate);
     setPhase("saved");
     toast.show({ tone: "success", title: "Información deportiva actualizada" });
   }

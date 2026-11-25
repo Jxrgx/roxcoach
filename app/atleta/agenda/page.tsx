@@ -43,7 +43,7 @@ async function AgendaContent({ searchParams }: { searchParams: PageProps<"/atlet
         }}
         loadingLabel="Cargando agenda…"
       >
-        <AgendaWeek days={weekDays(monday, today)} sessions={sessions} />
+        <AgendaWeek days={weekDays(monday, today)} sessions={sessions} today={today} />
       </ScreenStates>
     </>
   );
